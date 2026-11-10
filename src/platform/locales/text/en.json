@@ -1,6 +1,7 @@
 {
   "GDB (C, C++)": "GDB (C, C++)",
   "Unknown error": "Unknown error",
+  "Edit & Rerun": "Edit & Rerun",
   "Retry Loading Conversation": "Retry Loading Conversation",
   "No conversation history": "No conversation history",
   "Loading the conversation timed out. Try again.": "Loading the conversation timed out. Try again.",

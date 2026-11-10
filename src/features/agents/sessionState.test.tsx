@@ -241,6 +241,30 @@ describe("conversation rows", () => {
 });
 
 describe("process folding", () => {
+  it("opens live activity, respects manual collapse and opens it again on the next run", async () => {
+    backend.entries.set("A", [tool("one"), tool("two")]);
+    useAgents.setState({
+      tasks: new Map([["A", { ...task("A"), status: "running" }]]),
+      entries: new Map(backend.entries),
+    });
+    render(<SessionEditor input={input("A")} />);
+    const fold = (await screen.findByText("2 tool calls")).closest("details")!;
+    expect(fold.open).toBe(true);
+
+    fold.open = false;
+    fireEvent(fold, new Event("toggle"));
+    act(() => {
+      useAgents.setState({ entries: new Map([["A", [tool("one"), tool("two"), tool("three")]]]) });
+    });
+    expect(await screen.findByText("3 tool calls")).toBeInTheDocument();
+    expect(fold.open).toBe(false);
+
+    act(() => useAgents.setState({ tasks: new Map([["A", task("A")]]) }));
+    expect(fold.open).toBe(false);
+    act(() => useAgents.setState({ tasks: new Map([["A", { ...task("A"), status: "running" }]]) }));
+    expect(fold.open).toBe(true);
+  });
+
   it("folds reasoning and tool calls into one block", async () => {
     backend.entries.set("A", [
       { type: "thought", text: "think one" },

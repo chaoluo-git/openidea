@@ -241,6 +241,8 @@
   max-width: 100%;
   min-width: 0;
   overflow-wrap: anywhere;
+  font-size: var(--fs-input-large);
+  line-height: 1.6;
 }
 @container (max-width: 640px) {
   .stream {
@@ -338,7 +340,8 @@
   border-radius: var(--radius-tab);
   background: var(--bg-hover);
   color: var(--fg);
-  line-height: 1.5;
+  font-size: var(--fs-input-large);
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

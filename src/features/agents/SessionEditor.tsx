@@ -1265,11 +1265,13 @@ function UserMessage({
         )}
       </div>
       <div className={styles.messageFooter}>
+        {inPlace && entry.text && (
+          <Button variant="ghost" size="small" icon="edit" title="Edit & Rerun" onClick={() => setEditing(true)}>
+            Edit & Rerun
+          </Button>
+        )}
         <MessageActions>
           <IconButton size="small" icon="copy" title="Copy" onClick={() => void copyText(entry.text)} />
-          {inPlace && entry.text && (
-            <IconButton size="small" icon="edit" title="Edit" onClick={() => setEditing(true)} />
-          )}
           {inPlace && (
             <IconButton
               size="small"
@@ -1500,6 +1502,7 @@ const ProcessRun = memo(function ProcessRun({
   return (
     <Fold
       className={clsx(styles.processRun, styles.process)}
+      autoOpen={working}
       summary={
         <summary className={styles.processSummary}>
           <Icon name="chevron-right" size={12} className={styles.processChevron} />
@@ -1533,18 +1536,25 @@ const FoldedContent = createContext(false);
 function Fold({
   className,
   open,
+  autoOpen = false,
   summary,
   children,
 }: {
   className?: string;
   open?: boolean;
+  /** Reveal the latest live activity while an agent is still working. */
+  autoOpen?: boolean;
   summary: ReactElement;
   children: ReactNode;
 }) {
   const always = useContext(FoldedContent);
-  const [expanded, setExpanded] = useState(!!open);
+  const [expanded, setExpanded] = useState(!!(open || autoOpen));
   return (
-    <details className={className} open={open || undefined} onToggle={(e) => setExpanded(e.currentTarget.open)}>
+    <details
+      className={className}
+      open={open || autoOpen || undefined}
+      onToggle={(e) => setExpanded(e.currentTarget.open)}
+    >
       {summary}
       {(expanded || open || always) && children}
     </details>

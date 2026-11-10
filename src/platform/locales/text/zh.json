@@ -1246,6 +1246,7 @@
   "Insert pair quote": "插入成对引号",
   "Insert selected suggestion by pressing space, dot, or other context-dependent keys": "按空格、点或其他上下文相关键时插入所选建议",
   "Inspect": "检查",
+  "Edit & Rerun": "编辑并重新运行",
   "Inspect Code": "检查代码",
   "Inspect Code…": "检查代码…",
   "Inspect Docker Object": "检查 Docker 对象",
