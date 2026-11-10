@@ -1,4 +1,6 @@
 {
+  "Couldn't copy code": "无法复制代码",
+  "Plain Text": "纯文本",
   "GDB (C, C++)": "GDB（C、C++）",
   "Unknown error": "未知错误",
   "Retry Loading Conversation": "重新加载对话",

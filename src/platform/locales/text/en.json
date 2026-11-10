@@ -1,4 +1,8 @@
 {
+  "Copy Code": "Copy Code",
+  "Couldn't copy code": "Couldn't copy code",
+  "Plain Text": "Plain Text",
+  "Table": "Table",
   "GDB (C, C++)": "GDB (C, C++)",
   "Unknown error": "Unknown error",
   "Edit & Rerun": "Edit & Rerun",

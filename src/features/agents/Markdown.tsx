@@ -1,6 +1,6 @@
 /**
  * Agent messages: Markdown → sanitized HTML (marked + DOMPurify). Fenced code is
- * highlighted and gets a Copy button; inline code naming a file of the task opens it.
+ * highlighted and gets copy/wrap controls; inline code naming a file of the task opens it.
  * Mermaid fences become `[data-mermaid]` placeholders drawn by the Markdown viewer's
  * shared renderer after each render; the block keeps a Copy button of its own, since
  * the drawn diagram hides the code block, and `onDiagramDrawn` lets the conversation
@@ -14,12 +14,13 @@ import { iconNode } from "@/editor/lsp/iconMarkup";
 import { call, commands } from "@/platform/ipc";
 import { tx } from "@/platform/i18n";
 import { openExternalUrl } from "@/platform/openUrl";
-import { copyText } from "@/ui";
+import { executeAction } from "@/platform/actions";
 import { editorService } from "@/workbench/contributions";
 import { hasMermaid, renderMermaidIn } from "@/features/viewers/markdown/mermaid";
 import { subscribeTheme, themeKey } from "@/platform/themeWatch";
 import { fileHref, pathLink, type PathLink } from "./conversation";
 import { loadImages } from "./markdownImages";
+import type { CopyCode, WrapCode } from "./codeBlockActions";
 import styles from "./Session.module.css";
 
 const escapeHtml = (s: string) =>
@@ -85,6 +86,12 @@ function renderHtml(text: string): string {
     ADD_ATTR: ["data-mermaid"],
   }) as HTMLElement;
   root.querySelectorAll("li").forEach(wrapLooseText);
+  root.querySelectorAll("table").forEach((table) => {
+    const scroll = document.createElement("div");
+    scroll.className = styles.tableScroll!;
+    table.replaceWith(scroll);
+    scroll.appendChild(table);
+  });
   // WebKit cuts controls inside <pre> out of a text selection, even when transparent.
   root.querySelectorAll("pre").forEach((pre) => {
     if (pre.parentElement?.hasAttribute("data-mermaid")) return;
@@ -142,26 +149,92 @@ export function openPathLink(link: PathLink) {
 }
 
 /** Highlighting, Copy buttons and file links over freshly rendered `root`. */
-function enhance(root: HTMLElement, cwd: string, images: Map<string, Promise<string>>): () => void {
+function enhance(
+  root: HTMLElement,
+  cwd: string,
+  images: Map<string, Promise<string>>,
+  wrapped: Map<number, boolean>,
+): () => void {
   let alive = true;
   const disposeImages = loadImages(root, cwd, images);
-  const copies: HTMLButtonElement[] = [];
-  root.querySelectorAll<HTMLElement>("pre > code").forEach((code) => {
+  const toolbars: HTMLElement[] = [];
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  root.querySelectorAll<HTMLElement>(`.${styles.tableScroll}`).forEach((scroll) => {
+    scroll.tabIndex = 0;
+    scroll.setAttribute("role", "region");
+    scroll.setAttribute("aria-label", tx("Table"));
+  });
+  root.querySelectorAll<HTMLElement>("pre > code").forEach((code, index) => {
     const pre = code.parentElement!;
     const lang = [...code.classList].find((c) => c.startsWith("language-"))?.slice("language-".length) ?? null;
     const text = (code.textContent ?? "").replace(/\n+$/, "");
     code.textContent = text;
+    const block = pre.parentElement!;
+    const toolbar = document.createElement("div");
+    toolbar.className = styles.codeToolbar!;
+    const language = document.createElement("span");
+    language.className = styles.codeLanguage!;
+    language.textContent = lang || tx("Plain Text");
+    toolbar.appendChild(language);
+    if (!block.hasAttribute("data-mermaid")) {
+      const wrap = document.createElement("button");
+      wrap.type = "button";
+      wrap.className = styles.codeWrap!;
+      wrap.title = tx("Use Soft Wraps");
+      wrap.setAttribute("aria-label", wrap.title);
+      wrap.appendChild(iconNode("soft-wrap", 14));
+      const updateWrap = () => {
+        const enabled = wrapped.get(index) === true;
+        block.toggleAttribute("data-wrapped", enabled);
+        wrap.setAttribute("aria-pressed", String(enabled));
+      };
+      updateWrap();
+      wrap.onclick = () => {
+        void executeAction("agents.toggleCodeWrap", {
+          toggle: () => {
+            wrapped.set(index, !wrapped.get(index));
+            updateWrap();
+          },
+        } satisfies WrapCode);
+      };
+      toolbar.appendChild(wrap);
+    }
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = styles.codeCopy!;
-    const label = tx("Copy Code");
-    copy.title = label;
-    copy.setAttribute("aria-label", label);
-    copy.appendChild(iconNode("copy", 14));
     copy.dataset.copy = text;
-    const block = pre.parentElement!;
-    block.appendChild(copy);
-    copies.push(copy);
+    copy.setAttribute("aria-live", "polite");
+    const showCopied = (copied: boolean) => {
+      copy.title = tx(copied ? "Copied" : "Copy Code");
+      copy.setAttribute("aria-label", copy.title);
+      copy.replaceChildren(iconNode(copied ? "check" : "copy", 14), document.createTextNode(copy.title));
+    };
+    showCopied(false);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    copy.onclick = () => {
+      copy.disabled = true;
+      void executeAction("agents.copyCode", {
+        text,
+        onCopied: () => {
+          if (!alive) return;
+          showCopied(true);
+          if (timer) {
+            clearTimeout(timer);
+            timers.delete(timer);
+          }
+          timer = setTimeout(() => {
+            timers.delete(timer!);
+            if (alive) showCopied(false);
+          }, 2000);
+          timers.add(timer);
+        },
+      } satisfies CopyCode).finally(() => {
+        if (alive) copy.disabled = false;
+      });
+    };
+    toolbar.appendChild(copy);
+    block.prepend(toolbar);
+    toolbars.push(toolbar);
     if (!block.hasAttribute("data-mermaid")) void highlightInto(code, text, lang);
   });
   root.querySelectorAll<HTMLElement>("code").forEach((code) => {
@@ -179,7 +252,8 @@ function enhance(root: HTMLElement, cwd: string, images: Map<string, Promise<str
   });
   return () => {
     alive = false;
-    copies.forEach((copy) => copy.remove());
+    toolbars.forEach((toolbar) => toolbar.remove());
+    timers.forEach(clearTimeout);
     disposeImages();
   };
 }
@@ -197,11 +271,15 @@ export function Markdown({
   const html = useMemo(() => markdownHtml(text), [text]);
   const ref = useRef<HTMLDivElement>(null);
   const images = useRef(new Map<string, Promise<string>>());
+  const wrapped = useRef(new Map<number, boolean>());
   /** The last drawing of each mermaid block, stood in while a changed one renders. */
   const diagrams = useRef<Node[]>([]);
   // Diagrams are drawn in the active theme's colours: a theme change redraws them.
   const theme = useSyncExternalStore(subscribeTheme, themeKey, () => "");
-  useLayoutEffect(() => (ref.current ? enhance(ref.current, cwd, images.current) : undefined), [html, cwd]);
+  useLayoutEffect(
+    () => (ref.current ? enhance(ref.current, cwd, images.current, wrapped.current) : undefined),
+    [html, cwd],
+  );
   // Mermaid diagrams: before paint, so cached ones don't flash their source. Only a
   // draw that lands after the render needs the follow — cached ones are in place by
   // the time the conversation's own render pass scrolls.
@@ -222,11 +300,6 @@ export function Markdown({
       className={styles.markdown}
       onClick={(e) => {
         const target = e.target as HTMLElement;
-        const copy = target.closest<HTMLElement>("button[data-copy]");
-        if (copy) {
-          void copyText(copy.dataset.copy ?? "");
-          return;
-        }
         const file = target.closest<HTMLElement>("code[data-path]");
         if (file && !window.getSelection()?.toString()) {
           const line = file.dataset.line === undefined ? undefined : Number(file.dataset.line);
