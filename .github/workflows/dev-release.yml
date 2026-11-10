@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: dev-release-${{ github.ref }}
+  group: dev-release-macos-arm64-${{ github.ref }}
   cancel-in-progress: true
 
 env:
