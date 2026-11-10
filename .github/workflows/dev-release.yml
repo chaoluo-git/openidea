@@ -1,0 +1,92 @@
+name: Dev release (macOS arm64)
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-release-${{ github.ref }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  macos-arm64:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5
+        with: { version: 11 }
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-apple-darwin }
+      - uses: Swatinem/rust-cache@v2
+        with: { key: dev-aarch64-apple-darwin }
+      - run: pnpm install --frozen-lockfile
+      - name: Check frontend
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm format:check
+          pnpm knip
+          pnpm test
+      # Dev packages are installed manually. Empty endpoints prevent the fork
+      # from replacing itself with an upstream release through auto-update.
+      - name: Build macOS arm64
+        run: >-
+          pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg
+          --config '{"bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]}}}'
+      - name: Verify and prepare assets
+        id: assets
+        run: |
+          set -euo pipefail
+          version="$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).version')"
+          tag="dev-v${version}-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          bundle="target/aarch64-apple-darwin/release/bundle/dmg/OpenIDEA_${version}_aarch64.dmg"
+          test "$(lipo -archs target/aarch64-apple-darwin/release/openidea)" = arm64
+          hdiutil verify "$bundle"
+          mkdir -p release-assets
+          cp "$bundle" release-assets/
+          cd release-assets
+          shasum -a 256 "OpenIDEA_${version}_aarch64.dmg" > "OpenIDEA_${version}_aarch64.dmg.sha256"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: macos-arm64-${{ steps.assets.outputs.tag }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish dev prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.assets.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/dev-release-notes.md" <<EOF
+          Built from the maintained dev branch at $GITHUB_SHA.
+
+          - macOS arm64: Apple Silicon M1/M2/M3/M4 and later.
+          - Download the DMG and install it manually. SHA-256 is provided alongside it.
+          - This development build has no Developer ID signature or Apple notarization.
+          - Automatic updates are disabled in this package; install later dev releases manually.
+
+          Source: https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA
+          Build: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          EOF
+          gh release create "$TAG" release-assets/* --target "$GITHUB_SHA" \
+            --title "OpenIDEA Dev $TAG (macOS arm64)" --prerelease --latest=false \
+            --notes-file "$RUNNER_TEMP/dev-release-notes.md"
+          echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

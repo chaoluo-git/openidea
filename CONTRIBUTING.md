@@ -37,3 +37,23 @@ are listed through [l0ng-ai/openidea-plugins](https://github.com/l0ng-ai/openide
 see [`plugins/README.md`](plugins/README.md) § 8.1.
 
 A check on each PR adds `needs-info` when the verification section is missing, and removes it once it's filled in.
+
+## Maintained dev builds
+
+In `chaoluo-git/openidea`, `dev` is the independently maintained development branch.
+Push changes to `dev` to run **Dev release (macOS arm64)**. After the frontend checks
+and native build pass, the workflow publishes a GitHub prerelease with a DMG and
+its SHA-256 checksum. The package supports Apple Silicon, including M4. Each run
+gets a distinct `dev-v<app-version>-<run-number>.<attempt>` tag pointing to the
+exact source commit; failed builds do not publish a release.
+
+To rebuild without changing code, open that workflow in Actions, select **Run
+workflow**, and choose `dev`. The workflow only builds that branch. To change
+the app version, run `pnpm release:prepare <version>`, commit the resulting files
+on `dev`, and push. The existing stable and nightly workflows keep their own
+release channels.
+
+Dev packages are unsigned development builds without Apple notarization or
+automatic updates. Install later versions manually from this fork's
+[Releases](https://github.com/chaoluo-git/openidea/releases). The build disables
+upstream updater endpoints so an update cannot replace the maintained fork.
