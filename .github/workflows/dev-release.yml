@@ -10,6 +10,7 @@ permissions:
 
 concurrency:
   group: dev-release-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,7 +19,7 @@ env:
 jobs:
   macos-arm64:
     if: github.ref == 'refs/heads/dev'
-    runs-on: macos-15
+    runs-on: macos-latest
     timeout-minutes: 90
     permissions:
       contents: write
