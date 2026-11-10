@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/l0ng-ai/openidea/releases/latest"><b>Download</b></a>
+  <a href="https://github.com/chaoluo-git/openidea/releases"><b>Download</b></a>
   &nbsp;·&nbsp;
   <a href="#benchmark">Benchmark</a>
   &nbsp;·&nbsp;
@@ -20,6 +20,10 @@
 </p>
 
 https://github.com/user-attachments/assets/234dd54c-1255-4b3a-b35c-533d78d737c0
+
+This fork maintains the `dev` branch and publishes macOS Apple Silicon development
+packages in [Releases](https://github.com/chaoluo-git/openidea/releases).
+See [Maintained dev builds](CONTRIBUTING.md#maintained-dev-builds) for the build and release workflow.
 
 OpenIDEA brings the IntelliJ IDEA way of working — its keymap, its tool windows,
 its search-everything habits — to a native app with a Rust core.
