@@ -53,19 +53,23 @@ jobs:
           --config '{"bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]}}}'
       - name: Verify and prepare assets
         id: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           version="$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).version')"
-          tag="dev-v${version}-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          release_date="$(TZ=Asia/Shanghai date +%Y%m%d)"
+          tag="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$release_date" --jq '.[].ref' | node scripts/dev-release-version.ts "$release_date")"
           bundle="target/aarch64-apple-darwin/release/bundle/dmg/OpenIDEA_${version}_aarch64.dmg"
+          asset="OpenIDEA_${tag}_aarch64.dmg"
           app="target/aarch64-apple-darwin/release/bundle/macos/OpenIDEA.app"
           test "$(lipo -archs "$app/Contents/MacOS/openidea")" = arm64
           codesign --verify --deep --strict "$app"
           hdiutil verify "$bundle"
           mkdir -p release-assets
-          cp "$bundle" release-assets/
+          cp "$bundle" "release-assets/$asset"
           cd release-assets
-          shasum -a 256 "OpenIDEA_${version}_aarch64.dmg" > "OpenIDEA_${version}_aarch64.dmg.sha256"
+          shasum -a 256 "$asset" > "$asset.sha256"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v6
         with:
@@ -93,6 +97,6 @@ jobs:
           Build: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           EOF
           gh release create "$TAG" release-assets/* --target "$GITHUB_SHA" \
-            --title "OpenIDEA Dev $TAG (macOS arm64)" --prerelease --latest=false \
+            --title "OpenIDEA $TAG (macOS arm64)" --prerelease --latest=false \
             --notes-file "$RUNNER_TEMP/dev-release-notes.md"
           echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
