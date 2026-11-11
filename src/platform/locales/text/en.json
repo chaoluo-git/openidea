@@ -821,5 +821,20 @@
   "Couldn't copy table": "Couldn't copy table",
   "Restart With Earlier Messages": "Restart With Earlier Messages",
   "This agent starts a fresh session with earlier messages as text context. Earlier images are not resent.": "This agent starts a fresh session with earlier messages as text context. Earlier images are not resent.",
-  "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are.": "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are."
+  "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are.": "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are.",
+  "Generate Commit Message": "Generate Commit Message",
+  "Cancel Commit Message Generation": "Cancel Commit Message Generation",
+  "Choose Agent for Commit Message": "Choose Agent for Commit Message",
+  "Couldn't generate commit message": "Couldn't generate commit message",
+  "Couldn't close the generation session": "Couldn't close the generation session",
+  "The commit selection changed. Generate the message again.": "The commit selection changed. Generate the message again.",
+  "The selected changes are too large. Select fewer files.": "The selected changes are too large. Select fewer files.",
+  "Select changes to generate a commit message.": "Select changes to generate a commit message.",
+  "The agent did not return a valid commit message. Try again.": "The agent did not return a valid commit message. Try again.",
+  "Configure and sign in to an agent in Tools → Agents first.": "Configure and sign in to an agent in Tools → Agents first.",
+  "The agent could not generate a commit message.": "The agent could not generate a commit message.",
+  "Generating the commit message timed out. Try again.": "Generating the commit message timed out. Try again.",
+  "Open a project with selected changes first.": "Open a project with selected changes first.",
+  "The commit selection or draft changed. Generate the message again.": "The commit selection or draft changed. Generate the message again.",
+  "Generate": "Generate"
 }
