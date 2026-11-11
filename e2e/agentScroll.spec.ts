@@ -117,7 +117,7 @@ test("opens a folded process with the keyboard and jumps back to the latest repl
   await stream.evaluate((el) => {
     el.scrollTop = 0;
   });
-  const jump = page.getByRole("button", { name: "Jump to Latest" });
+  const jump = page.getByRole("button", { name: "Scroll to bottom" });
   await expect(jump).toBeVisible();
   const fold = stream.locator("[class*='_processRun_']").first();
   const summary = fold.locator(":scope > summary");

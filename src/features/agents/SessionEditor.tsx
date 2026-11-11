@@ -55,6 +55,7 @@ import {
 } from "@/ui";
 import { useTx, tx } from "@/platform/i18n";
 import { isImeKey } from "@/platform/ime";
+import { registerKeyClaim } from "@/platform/keymap";
 import { TaskStatusIcon } from "./AgentsView";
 import { Composer } from "./Composer";
 import { SubmitButton } from "./SubmitButton";
@@ -72,6 +73,7 @@ import {
 } from "./permission";
 import { Markdown } from "./Markdown";
 import { MessageText } from "./MessageText";
+import { createFollowScroll } from "./followScroll";
 import { useAgentErrorText } from "./loginHint";
 import {
   branchLabel,
@@ -549,6 +551,35 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
   // Keep a process run intact so prepending never replaces the anchored row.
   while (entries && start > 0 && isProcessEntry(entries[start]!) && isProcessEntry(entries[start - 1]!)) start--;
   const dragging = useRef(false);
+  const busy = subagent ? subagentWorking(subagent.status) : isBusy(task.status);
+  const follower = useRef<ReturnType<typeof createFollowScroll> | null>(null);
+  const followEnd = useCallback((animate: boolean, force = false) => {
+    const el = ref.current;
+    if (!el || dragging.current) return;
+    const selection = window.getSelection();
+    const editing =
+      el.contains(document.activeElement) &&
+      document.activeElement?.matches("textarea, input, [contenteditable='true']");
+    if (
+      !force &&
+      (editing ||
+        (selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(el)))
+    ) {
+      follower.current?.cancel();
+      position.current.stick = false;
+      setAway(el.scrollHeight - el.scrollTop - el.clientHeight >= 40);
+      return;
+    }
+    follower.current ??= createFollowScroll(el);
+    follower.current.follow(animate || follower.current.active);
+  }, []);
+  useEffect(
+    () => () => {
+      follower.current?.dispose();
+      follower.current = null;
+    },
+    [],
+  );
   // When the user last scrolled the conversation (wheel, touch, keys, the scrollbar, Find):
   // that leaves the end. WebKit also moves the offset back on its own while rows lay out,
   // which comes with a change of the content height; a scroll without one is meant too (the
@@ -556,6 +587,7 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
   const userScrolled = useRef(-Infinity);
   const seenHeight = useRef(0);
   const markUserScroll = useCallback(() => {
+    follower.current?.cancel();
     userScrolled.current = performance.now();
   }, []);
   // Earlier entries are prepended above the view: remember where the first painted row is
@@ -586,6 +618,7 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
     const up = () => {
       if (!dragging.current) return;
       dragging.current = false;
+      if (position.current.stick) followEnd(busy);
       if (ref.current && (position.current.stick || ref.current.scrollTop < 120)) loadWhenStill();
     };
     window.addEventListener("pointerdown", down, true);
@@ -599,7 +632,7 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
       window.removeEventListener("blur", up);
       if (loadTimer.current !== null) window.clearTimeout(loadTimer.current);
     };
-  }, [loadWhenStill]);
+  }, [loadWhenStill, followEnd, busy]);
   useEffect(() => {
     // Following the end, paint the rest in the background. A user who scrolled away
     // gets them only after stopping near the top (`loadWhenStill`), so the scrollbar
@@ -612,9 +645,8 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
   useOffscreenRows(ref, visible, !finding);
   /** A diagram that drew after the last streamed chunk grows the conversation: keep following. */
   const onDiagramDrawn = useCallback(() => {
-    const el = ref.current;
-    if (el && position.current.stick) el.scrollTop = el.scrollHeight;
-  }, []);
+    if (position.current.stick) followEnd(busy);
+  }, [followEnd, busy]);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || entries === null || !visible) return;
@@ -628,9 +660,15 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
   }, [entries, visible, key, positions]);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el || entries === null || !visible) return;
-    if (position.current.stick) el.scrollTop = el.scrollHeight;
+    if (!visible) {
+      follower.current?.cancel();
+      restored.current = false;
+      return;
+    }
+    if (!el || entries === null) return;
+    if (position.current.stick) followEnd(restored.current && busy);
     else if (!restored.current) el.scrollTop = position.current.top;
+    if (!position.current.stick) setAway(el.scrollHeight - el.scrollTop - el.clientHeight >= 40);
     restored.current = true;
   });
   useLayoutEffect(() => {
@@ -647,31 +685,29 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
     const el = ref.current;
     if (!el) return;
     const observer = new ResizeObserver(() => {
-      if (position.current.stick) el.scrollTop = el.scrollHeight;
+      if (position.current.stick) followEnd(restored.current && busy);
     });
     observer.observe(el);
     return () => {
       observer.disconnect();
       if (restored.current) positions.set(key, { ...position.current, top: el.scrollTop });
     };
-  }, [key, positions]);
+  }, [key, positions, followEnd, busy]);
   /** Back to the end of the stream; following resumes from there. */
   const jumpToLatest = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     position.current = { top: el.scrollHeight, stick: true };
-    if (typeof el.scrollTo === "function") el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    else el.scrollTop = el.scrollHeight;
+    followEnd(true, true);
     setAway(false);
     el.focus({ preventScroll: true });
-  }, []);
+  }, [followEnd]);
   const waiting = entries?.some((e) => e.type === "permission" && !e.chosen);
   const lastUser = entries?.findLast((e): e is UserEntry => e.type === "user");
   // Forks and undo apply to the task's own turns, not a subagent's conversation.
   const turns = useMemo(() => (entries && !subagent ? turnNumbers(entries) : null), [entries, subagent]);
   const replies = useMemo(() => (entries && !subagent ? replyTurns(entries) : null), [entries, subagent]);
   const times = useMemo(() => (entries && !subagent ? replyTimes(entries) : null), [entries, subagent]);
-  const busy = subagent ? subagentWorking(subagent.status) : isBusy(task.status);
   const lastIndex = entries ? entries.length - 1 : -1;
   // Keep the row stable when earlier history is prepended; its author can move with the work.
   const rows = useMemo(() => (entries ? conversationRows(entries, start) : []), [entries, start]);
@@ -720,15 +756,18 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
         className={clsx(styles.stream, selectableText)}
         tabIndex={-1}
         onScroll={(e) => {
+          if (!visible) return;
           const el = e.currentTarget;
           const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
           const laidOut = el.scrollHeight !== seenHeight.current;
           seenHeight.current = el.scrollHeight;
-          const byUser = dragging.current || performance.now() - userScrolled.current < 500 || !laidOut;
+          const automatic = follower.current?.ownsScroll() ?? false;
+          const byUser = !automatic && (dragging.current || performance.now() - userScrolled.current < 500 || !laidOut);
           const stick = atEnd || (position.current.stick && !byUser);
-          // Still following: back to the end the offset was moved away from.
-          if (stick && !atEnd) el.scrollTop = el.scrollHeight;
           position.current = { top: el.scrollTop, stick };
+          if (!stick) follower.current?.cancel();
+          else if (!atEnd && !automatic) followEnd(busy);
+          position.current.top = el.scrollTop;
           positions.set(key, position.current);
           setAway(!position.current.stick);
           // Reached the top of what is painted: fetch the earlier entries, but only
@@ -846,8 +885,9 @@ function JumpToLatest({ onJump }: { onJump: () => void }) {
   return (
     <IconButton
       className={styles.jumpToLatest}
-      title="Jump to Latest"
-      icon="arrow-down"
+      title="Scroll to bottom"
+      icon="chevron-down"
+      iconSize={20}
       action="agents.jumpToLatest"
       actionArg={{ onJump }}
     />
@@ -1227,7 +1267,29 @@ function UserMessage({
         </span>
       </div>
       <div className={styles.user}>
-        <MessageText text={entry.text} />
+        {editable && entry.text ? (
+          <button
+            type="button"
+            className={styles.editableText}
+            title={tx("Edit & Rerun")}
+            onClick={(e) => {
+              const selection = window.getSelection();
+              if (
+                e.detail > 0 &&
+                selection &&
+                !selection.isCollapsed &&
+                selection.rangeCount &&
+                selection.getRangeAt(0).intersectsNode(e.currentTarget)
+              )
+                return;
+              void executeAction("agents.editMessage", { onEdit: () => setEditing(true) });
+            }}
+          >
+            <MessageText text={entry.text} />
+          </button>
+        ) : (
+          <MessageText text={entry.text} />
+        )}
         <ImageStrip images={images} />
         {files.length > 0 && (
           <div className={styles.attachments}>
@@ -1242,7 +1304,13 @@ function UserMessage({
       </div>
       <div className={styles.messageFooter}>
         {editable && (Boolean(entry.text) || Boolean(entry.images?.length)) && (
-          <Button variant="ghost" size="small" icon="edit" title="Edit & Rerun" onClick={() => setEditing(true)}>
+          <Button
+            variant="ghost"
+            size="small"
+            icon="edit"
+            title="Edit & Rerun"
+            onClick={() => void executeAction("agents.editMessage", { onEdit: () => setEditing(true) })}
+          >
             Edit & Rerun
           </Button>
         )}
@@ -1306,6 +1374,8 @@ function MessageEditor({
   const [text, setText] = useState(initial);
   const [images, setImages] = useState(initialImages);
   const [sending, setSending] = useState(false);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => registerKeyClaim((event, stroke) => stroke === "Escape" && event.target === editRef.current), []);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
   const send = async () => {
@@ -1326,6 +1396,7 @@ function MessageEditor({
   return (
     <div className={styles.message}>
       <textarea
+        ref={editRef}
         className={styles.editMessage}
         value={text}
         rows={Math.min(Math.max(text.split("\n").length, 2), 12)}
@@ -1340,8 +1411,9 @@ function MessageEditor({
             e.preventDefault();
             e.stopPropagation();
             if (!pending.current) onCancel();
-          } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          } else if (e.key === "Enter" && !e.shiftKey && !e.altKey) {
             e.preventDefault();
+            e.stopPropagation();
             void send();
           }
         }}

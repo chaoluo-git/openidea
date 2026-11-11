@@ -80,6 +80,8 @@ interface AgentsState {
   focus: { key: string; seq: number } | null;
   /** Task shown inside the Agents tool window instead of an editor tab. */
   docked: string | null;
+  /** Open conversations in the tool window, in tab order. */
+  dockedTabs: string[];
   sessionLocation: SessionLocation;
   lastTask: string | null;
   homeOpen: boolean;
@@ -134,6 +136,7 @@ export const useAgents = create<AgentsState>(() => ({
   history: load<string[]>(HISTORY_KEY, []),
   focus: null,
   docked: null,
+  dockedTabs: [],
   sessionLocation: load<unknown>(SESSION_LOCATION_KEY, null) === "toolWindow" ? "toolWindow" : "editor",
   lastTask: null,
   homeOpen: false,
@@ -285,6 +288,7 @@ export function disconnect() {
     entryLoads: new Map(),
     changes: new Map(),
     docked: null,
+    dockedTabs: [],
     lastTask: null,
     homeOpen: false,
     scrollPositions: new Map(),
@@ -314,7 +318,14 @@ function onEvent(e: AgentEvent) {
       composers.delete(e.id);
       const unread = new Set(s.unread);
       unread.delete(e.id);
-      useAgents.setState({ tasks, composers, unread, ...(s.docked === e.id ? { docked: null } : {}) });
+      const dockedTabs = s.dockedTabs.filter((id) => id !== e.id);
+      useAgents.setState({
+        tasks,
+        composers,
+        unread,
+        dockedTabs,
+        ...(s.docked === e.id ? { docked: dockedTabs.at(-1) ?? null } : {}),
+      });
       void editorService().closeInput?.(sessionKey(e.id));
       break;
     }
@@ -470,26 +481,67 @@ export function openTask(task: string) {
   openTaskInEditor(task);
 }
 
-function openTaskInEditor(task: string) {
+function openTaskInEditor(task: string, focus = true) {
   // The title rides along so a restored tab has it before the tasks load.
   const title = useAgents.getState().tasks.get(task)?.title;
-  void editorService().openInput({ kind: SESSION_KIND, key: sessionKey(task), data: { task, title } }, { focus: true });
+  void editorService().openInput({ kind: SESSION_KIND, key: sessionKey(task), data: { task, title } }, { focus });
 }
 
 function showDockedTask(task: string) {
-  useAgents.setState({ docked: task, lastTask: task, homeOpen: false, lastComposer: task });
+  useAgents.setState((s) => ({
+    docked: task,
+    dockedTabs: s.dockedTabs.includes(task) ? s.dockedTabs : [...s.dockedTabs, task],
+    lastTask: task,
+    homeOpen: false,
+    lastComposer: task,
+  }));
   toolWindowService().show(TOOL_WINDOW, true);
   void editorService().closeInput?.(sessionKey(task));
 }
 
-function saveSessionLocation(location: SessionLocation) {
+function saveSessionLocation(location: SessionLocation, activeTask?: string | null) {
   useAgents.setState({ sessionLocation: location });
   save(SESSION_LOCATION_KEY, location);
   if (location === "toolWindow") {
+    const sessions = (editorService().openTabs?.() ?? []).flatMap(({ input }) =>
+      input.kind === SESSION_KIND ? [(input.data as { task: string }).task] : [],
+    );
+    useAgents.setState((s) => ({ dockedTabs: [...new Set([...s.dockedTabs, ...sessions])] }));
     for (const { input } of editorService().openTabs?.() ?? []) {
       if (input.kind === SESSION_KIND || input.kind === HOME_KIND) void editorService().closeInput?.(input.key);
     }
+  } else {
+    for (const id of useAgents.getState().dockedTabs) if (id !== activeTask) openTaskInEditor(id, false);
+    useAgents.setState({ dockedTabs: [] });
   }
+}
+
+/** Closing a tab only closes its view, leaving the task and its draft available in history. */
+export function closeDockedTab(task: string) {
+  const s = useAgents.getState();
+  if (task === HOME) {
+    const docked = s.lastTask && s.dockedTabs.includes(s.lastTask) ? s.lastTask : (s.dockedTabs.at(-1) ?? null);
+    useAgents.setState({ homeOpen: false, docked });
+    return;
+  }
+  const index = s.dockedTabs.indexOf(task);
+  if (index < 0 && s.docked !== task) return;
+  const dockedTabs = s.dockedTabs.filter((id) => id !== task);
+  useAgents.setState({
+    dockedTabs,
+    ...(s.docked === task
+      ? { docked: dockedTabs[index < 0 ? dockedTabs.length - 1 : Math.min(index, dockedTabs.length - 1)] ?? null }
+      : {}),
+  });
+}
+
+export function reorderDockedTab(task: string, index: number) {
+  const tabs = useAgents.getState().dockedTabs;
+  const from = tabs.indexOf(task);
+  if (from < 0 || !Number.isInteger(index)) return;
+  const next = tabs.filter((id) => id !== task);
+  next.splice(Math.max(0, Math.min(index > from ? index - 1 : index, next.length)), 0, task);
+  useAgents.setState({ dockedTabs: next });
 }
 
 /** Conversation placement is an Agents-wide preference, shared by every task. */
@@ -506,7 +558,7 @@ export function setSessionLocation(location: SessionLocation) {
     [...s.tasks.values()]
       .filter((t) => t.status !== "archived")
       .sort((a, b) => (b.updatedMs ?? b.createdMs ?? 0) - (a.updatedMs ?? a.createdMs ?? 0))[0]?.id;
-  saveSessionLocation(location);
+  saveSessionLocation(location, home ? null : task);
   useAgents.setState({ docked: null, homeOpen: false });
   if (home) {
     openHome();
@@ -529,7 +581,7 @@ export function undockTask() {
 
 /** An explicit editor drop also updates where subsequent sessions open. */
 export function openTaskInEditorLocation(task: string) {
-  saveSessionLocation("editor");
+  saveSessionLocation("editor", task);
   useAgents.setState({ docked: null, homeOpen: false });
   openTask(task);
 }

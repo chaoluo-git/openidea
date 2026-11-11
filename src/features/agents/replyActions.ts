@@ -63,6 +63,17 @@ export const replyActions: Action[] = [
   ...codeBlockActions,
   copyReplyAction,
   {
+    id: "agents.editMessage",
+    title: "Edit & Rerun",
+    category: "Agents",
+    icon: "edit",
+    hidden: true,
+    run: ({ arg }) => {
+      const target = arg as { onEdit?: () => void } | undefined;
+      target?.onEdit?.();
+    },
+  },
+  {
     id: "agents.jumpToLatest",
     title: "Jump to Latest",
     category: "Agents",

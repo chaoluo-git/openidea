@@ -344,7 +344,10 @@ for (const theme of ["light", "dark"] as const) {
   }
 }
 
-test("keeps SQL controls visible, wraps long code and copies the original source", async ({ page, context }, info) => {
+test("reveals compact SQL controls on hover and keyboard focus, wraps and copies the source", async ({
+  page,
+  context,
+}, info) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.setViewportSize({ width: 900, height: 1000 });
   const code = `SELECT user_id, field_name, field_value, last_modified FROM filter_push_user_registration WHERE field_name = '${"registration_".repeat(18)}';`;
@@ -352,6 +355,12 @@ test("keeps SQL controls visible, wraps long code and copies the original source
   await page.mouse.move(0, 0);
   const copy = reply.getByRole("button", { name: "Copy Code", exact: true });
   const wrap = reply.getByRole("button", { name: "Use Soft Wraps" });
+  const toolbar = reply.locator("[class*='_codeToolbar_']");
+  await expect(toolbar).toHaveCSS("opacity", "0");
+  await expect(toolbar).toHaveCSS("height", "0px");
+  await expect(copy).toHaveText("");
+  await reply.locator("pre").hover();
+  await expect(toolbar).toHaveCSS("opacity", "1");
   await expect(copy).toBeVisible();
   await expect(wrap).toHaveAttribute("aria-pressed", "false");
   await expect(reply.locator("code .tok-keyword").first()).toBeVisible();
@@ -483,7 +492,8 @@ test("copies reply Markdown with the keyboard and keeps code copying separate", 
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(REPLY);
-  await reply.getByRole("button", { name: "Copy Code", exact: true }).click();
+  await reply.getByRole("button", { name: "Copy Code", exact: true }).focus();
+  await page.keyboard.press("Enter");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("const a = 1;");
 });
 
@@ -647,9 +657,11 @@ test("selects through code blocks and tables while keeping copy controls outside
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(selected);
   await page.evaluate(() => window.getSelection()!.removeAllRanges());
   const copies = reply.getByRole("button", { name: "Copy Code", exact: true });
-  await copies.first().click();
+  await copies.first().focus();
+  await page.keyboard.press("Enter");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(tree);
-  await copies.last().click();
+  await copies.last().focus();
+  await page.keyboard.press("Enter");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(flow);
 });
 

@@ -37,9 +37,9 @@ function Code({ text, language }: { text: string; language: string | null }) {
     };
   }, [text, language]);
   return (
-    <pre className={styles.messageCode}>
+    <span className={styles.messageCode}>
       <code ref={ref}>{text}</code>
-    </pre>
+    </span>
   );
 }
 

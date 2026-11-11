@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import clsx from "clsx";
 import type { AgentStatus as Status, AgentTask } from "@/bindings";
-import { EDITOR_TAB_MIME, maybeEditorService, type EditorInput } from "@/workbench/contributions";
+import { EDITOR_TAB_MIME, EditorShownProvider, maybeEditorService, type EditorInput } from "@/workbench/contributions";
 import {
   EmptyState,
   Icon,
@@ -11,12 +11,14 @@ import {
   Spinner,
   T,
   Tree,
+  Tabs,
   registerDropTarget,
   showContextMenu,
   startPointerDrag,
 } from "@/ui";
 import { SESSION_KIND, TASK_DRAG, age, branchLabel, groupTasks, sessionKey, type TaskGroup } from "./model";
-import { openHome, useAgents } from "./store";
+import { HOME, openHome, useAgents } from "./store";
+import { TaskStatusMark } from "./TaskStatusMark";
 import { taskMenu } from "./taskActions";
 import { SessionEditor } from "./SessionEditor";
 import { HomeEditor } from "./HomeEditor";
@@ -86,6 +88,7 @@ export function AgentsView() {
   const unread = useAgents((s) => s.unread);
   const providers = useAgents((s) => s.providers);
   const docked = useAgents((s) => s.docked);
+  const dockedTabs = useAgents((s) => s.dockedTabs);
   const homeOpen = useAgents((s) => s.homeOpen);
   const inline = docked !== null || homeOpen;
   const historyRef = useRef<HTMLButtonElement>(null);
@@ -140,7 +143,7 @@ export function AgentsView() {
     setHistoryOpen(false);
     void executeAction("agents.openTask", task);
   };
-  const dockedTitle = docked ? (tasks.get(docked)?.title ?? docked) : null;
+  const openTabs = docked && !dockedTabs.includes(docked) ? [...dockedTabs, docked] : dockedTabs;
   const dragTask = (e: ReactPointerEvent<HTMLSpanElement>, task: string) =>
     startPointerDrag(e, e.currentTarget, { type: TASK_DRAG, payload: task });
 
@@ -244,29 +247,62 @@ export function AgentsView() {
                   setHistoryOpen((open) => !open);
                 }}
               />
-              <span
-                className={styles.dockedTitle}
-                title={dockedTitle ?? undefined}
-                onPointerDown={(e) => docked && dragTask(e, docked)}
-              >
-                {homeOpen ? <T>New Agent Task</T> : dockedTitle}
-              </span>
+              <Tabs
+                className={styles.sessionTabs}
+                aria-label={tx("Agent sessions")}
+                panelIdPrefix="agent-sessions"
+                items={[
+                  ...openTabs.map((id) => ({
+                    id,
+                    text: tasks.get(id)?.title ?? id,
+                    label: <span className={styles.dockedTitle}>{tasks.get(id)?.title ?? id}</span>,
+                    closable: true,
+                    trailing: <TaskStatusMark task={id} />,
+                  })),
+                  ...(homeOpen ? [{ id: HOME, label: tx("New Agent Task"), closable: true }] : []),
+                ]}
+                activeId={homeOpen ? HOME : docked}
+                onSelect={(id) => (id === HOME ? openHome() : showTask(id))}
+                onClose={(id) => void executeAction("agents.closeSessionTab", id)}
+                dnd={{
+                  type: TASK_DRAG,
+                  payload: (id) => id,
+                  onDrop: (task, index) => void executeAction("agents.reorderSessionTab", { task, index }),
+                }}
+              />
             </div>
             <div className={styles.dockedSession}>
-              {homeOpen ? (
-                <HomeEditor docked />
-              ) : (
-                docked && (
-                  <SessionEditor
-                    docked
-                    input={{
-                      kind: SESSION_KIND,
-                      key: sessionKey(docked),
-                      data: { task: docked, title: tasks.get(docked)?.title },
-                    }}
-                  />
-                )
+              {homeOpen && (
+                <div
+                  id={`agent-sessions-panel-${HOME}`}
+                  role="tabpanel"
+                  aria-labelledby={`agent-sessions-tab-${HOME}`}
+                  className={styles.sessionPanel}
+                >
+                  <HomeEditor docked />
+                </div>
               )}
+              {openTabs.map((id) => (
+                <div
+                  key={id}
+                  id={`agent-sessions-panel-${id}`}
+                  role="tabpanel"
+                  aria-labelledby={`agent-sessions-tab-${id}`}
+                  hidden={homeOpen || docked !== id}
+                  className={styles.sessionPanel}
+                >
+                  <EditorShownProvider value={!homeOpen && docked === id}>
+                    <SessionEditor
+                      docked
+                      input={{
+                        kind: SESSION_KIND,
+                        key: sessionKey(id),
+                        data: { task: id, title: tasks.get(id)?.title },
+                      }}
+                    />
+                  </EditorShownProvider>
+                </div>
+              ))}
             </div>
           </div>
         )}

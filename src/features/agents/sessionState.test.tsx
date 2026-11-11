@@ -85,7 +85,8 @@ const subagent: SubagentEntry = {
   cancellable: false,
 };
 const input = (id: string) => ({ kind: SESSION_KIND, key: sessionKey(id), data: { task: id } });
-const stream = () => document.querySelector<HTMLDivElement>(`.${styles.stream}`)!;
+const stream = () =>
+  [...document.querySelectorAll<HTMLDivElement>(`.${styles.stream}`)].find((el) => !el.closest("[hidden]"))!;
 const tool = (id: string, overrides: Partial<Extract<AgentEntry, { type: "tool" }>> = {}): AgentEntry => ({
   type: "tool",
   id,
@@ -340,14 +341,14 @@ describe("scrolling", () => {
     fireEvent.wheel(el);
     el.scrollTop = 100;
     fireEvent.scroll(el);
-    expect(screen.getByRole("button", { name: "Jump to Latest" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Scroll to bottom" })).toBeInTheDocument();
     height = 400;
     act(() => useAgents.setState({ entries: new Map([["A", []]]) }));
-    expect(screen.queryByRole("button", { name: "Jump to Latest" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Scroll to bottom" })).toBeNull();
     height = 1400;
     act(() => useAgents.setState({ entries: new Map([["A", [{ type: "agent", text: "New reply" }]]]) }));
     expect(el.scrollTop).toBe(1400);
-    expect(screen.queryByRole("button", { name: "Jump to Latest" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Scroll to bottom" })).toBeNull();
   });
 
   it("defers prepending during a pointer drag and preserves the first row's viewport position", async () => {
@@ -364,6 +365,11 @@ describe("scrolling", () => {
     Object.defineProperty(el, "clientHeight", { configurable: true, value: 400 });
     // Give the conversation a new tail while the scrollbar is held.
     fireEvent.pointerDown(el);
+    view.rerender(
+      <EditorShownProvider value={true}>
+        <SessionEditor input={input("A")} />
+      </EditorShownProvider>,
+    );
     act(() =>
       useAgents.setState({
         entries: new Map([["A", [...entries, ...entries.map((e, i) => ({ ...e, text: `New ${i}` }))]]]),
@@ -402,13 +408,13 @@ describe("scrolling", () => {
     el.scrollTop = 600;
     fireEvent.scroll(el);
     expect(el.scrollTop).toBe(1300);
-    expect(screen.queryByRole("button", { name: "Jump to Latest" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Scroll to bottom" })).toBeNull();
     // Scrolling up with the wheel leaves the end.
     fireEvent.wheel(el);
     el.scrollTop = 600;
     fireEvent.scroll(el);
     expect(el.scrollTop).toBe(600);
-    expect(await screen.findByRole("button", { name: "Jump to Latest" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Scroll to bottom" })).toBeInTheDocument();
   });
 
   it("leaves the end for a scroll that no layout caused, as dragging the scrollbar thumb", async () => {
@@ -422,7 +428,7 @@ describe("scrolling", () => {
     el.scrollTop = 0;
     fireEvent.scroll(el);
     expect(el.scrollTop).toBe(0);
-    expect(await screen.findByRole("button", { name: "Jump to Latest" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Scroll to bottom" })).toBeInTheDocument();
   });
 
   it("offers one click back to the latest message after scrolling up", async () => {
@@ -434,11 +440,10 @@ describe("scrolling", () => {
     fireEvent.wheel(el);
     el.scrollTop = 100;
     fireEvent.scroll(el);
-    const jump = await screen.findByRole("button", { name: "Jump to Latest" });
-    Object.defineProperty(el, "scrollTo", { configurable: true, value: vi.fn() });
+    const jump = await screen.findByRole("button", { name: "Scroll to bottom" });
     fireEvent.click(jump);
-    expect(el.scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "smooth" });
-    expect(screen.queryByRole("button", { name: "Jump to Latest" })).toBeNull();
+    await waitFor(() => expect(el.scrollTop).toBeCloseTo(600, 0), { timeout: 2000 });
+    expect(screen.queryByRole("button", { name: "Scroll to bottom" })).toBeNull();
   });
 });
 

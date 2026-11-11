@@ -20,24 +20,47 @@ export interface PathLink {
   col?: number;
 }
 
-const PATH = /^(?:\.\/)?([\w.@-]+(?:\/[\w.@-]+)*\.[A-Za-z][A-Za-z0-9]*)(?::(\d+)(?::(\d+))?|#L(\d+))?$/;
+/** A local href that survives sanitizing without enabling custom URL schemes. */
+export function pathHref(link: PathLink): string {
+  const path = link.path.split("/").map(encodeURIComponent).join("/");
+  return link.line === undefined ? path : `${path}#L${link.line + 1}C${(link.col ?? 0) + 1}`;
+}
 
 /** Explicit Markdown links can also name files with spaces or non-ASCII names. */
 export function fileHref(href: string, cwd: string): PathLink | null {
-  if (!href || href.startsWith("#") || href.startsWith("//") || /^[a-z][a-z\d+.-]*:/i.test(href)) return null;
+  if (/^file:/i.test(href)) {
+    try {
+      const url = new URL(href);
+      if (url.hostname && url.hostname !== "localhost") return null;
+      if (url.search) return null;
+      href = url.pathname + url.hash;
+    } catch {
+      return null;
+    }
+  }
+  if (!href || href.startsWith("#") || href.startsWith("//")) return null;
+  if (/^[a-z][a-z\d+.-]*:/i.test(href) && !/^(?:[^/:]+\.[^/:]+|Dockerfile|Makefile|LICENSE):\d+(?::\d+)?$/.test(href))
+    return null;
   let decoded: string;
   try {
     decoded = decodeURIComponent(href);
   } catch {
     return null;
   }
-  const match = /^(.*?)(?::(\d+)(?::(\d+))?|#L(\d+))?$/.exec(decoded);
-  if (!match?.[1] || [...decoded].some((char) => char.charCodeAt(0) < 32)) return null;
-  const path = match[1].startsWith("/") ? match[1] : `${cwd.replace(/\/$/, "")}/${match[1]}`;
+  const match = /^(.*?)(?::(\d+)(?::(\d+))?|#L(\d+)(?:C(\d+))?(?:-L?\d+(?:C\d+)?)?)?$/.exec(decoded);
+  if (
+    !match?.[1] ||
+    decoded.includes("\\") ||
+    [...decoded].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+  )
+    return null;
+  const path = match[1].startsWith("/") ? match[1] : `${cwd.replace(/\/$/, "")}/${match[1].replace(/^\.\//, "")}`;
   const link: PathLink = { path };
   const line = match[2] ?? match[4];
-  if (line) link.line = Math.max(0, Number(line) - 1);
-  if (match[3]) link.col = Math.max(0, Number(match[3]) - 1);
+  const col = match[3] ?? match[5];
+  if ([line, col].some((n) => n !== undefined && (!Number.isSafeInteger(Number(n)) || Number(n) < 1))) return null;
+  if (line) link.line = Number(line) - 1;
+  if (col) link.col = Number(col) - 1;
   return link;
 }
 
@@ -48,17 +71,12 @@ export function fileHref(href: string, cwd: string): PathLink | null {
  */
 export function pathLink(text: string, cwd: string): PathLink | null {
   const t = text.trim();
-  if (!t || /\s|:\/\//.test(t)) return null;
-  const absolute = t.startsWith("/");
-  const m = PATH.exec(absolute ? t.slice(1) : t);
-  if (!m) return null;
-  const rel = m[1]!;
-  const path = absolute ? `/${rel}` : `${cwd.replace(/\/$/, "")}/${rel}`;
-  const line = m[2] ?? m[4];
-  const out: PathLink = { path };
-  if (line) out.line = Math.max(0, Number(line) - 1);
-  if (m[3]) out.col = Math.max(0, Number(m[3]) - 1);
-  return out;
+  const link = fileHref(t, cwd);
+  if (!link || /[<>"|*?\n\r]/.test(t)) return null;
+  const filename = link.path.split("/").at(-1)!;
+  if (!/^(?:[\p{L}\p{N}_@. -]+\.[a-zA-Z][a-zA-Z0-9]*|\.[\w.-]+|Dockerfile|Makefile|LICENSE)$/u.test(filename))
+    return null;
+  return link;
 }
 
 /** `850ms`, `12s`, `1m 05s`, `2h 03m`. */

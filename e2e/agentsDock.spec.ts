@@ -37,7 +37,10 @@ async function seedAndDock(page: Page) {
     });
     store.dockTask(task.id);
   }, TASK);
-  await page.locator("span[title='Repro task']").first().waitFor();
+  await page
+    .getByRole("tablist", { name: "Agent sessions" })
+    .getByRole("tab", { name: /Repro task/ })
+    .waitFor();
 }
 
 test("drags the docked conversation back onto the editor", async ({ page }) => {
@@ -48,15 +51,15 @@ test("drags the docked conversation back onto the editor", async ({ page }) => {
   await page.getByRole("tab", { name: "README.md" }).waitFor();
   await seedAndDock(page);
 
-  const title = page.locator("span[title='Repro task']").first();
-  const to = await page.getByRole("tabpanel").first().boundingBox();
+  const title = page.getByRole("tablist", { name: "Agent sessions" }).getByRole("tab", { name: /Repro task/ });
+  const to = await page.locator("[data-editor-area]").getByRole("tabpanel").first().boundingBox();
   const from = await title.boundingBox();
   await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
   await page.mouse.down();
   await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 10 });
   await page.mouse.up();
 
-  await expect(page.getByRole("tab", { name: "Repro task" })).toBeVisible();
+  await expect(page.locator("[data-editor-area]").getByRole("tab", { name: "Repro task" })).toBeVisible();
   await expect(page.getByRole("tree", { name: "Agent tasks" })).toBeVisible();
 });
 
@@ -68,7 +71,7 @@ test("drags the docked conversation back onto the empty editor", async ({ page }
   await seedAndDock(page);
   await expect(page.locator("[data-editor-area] [role='tabpanel']")).toHaveCount(0);
 
-  const title = page.locator("span[title='Repro task']").first();
+  const title = page.getByRole("tablist", { name: "Agent sessions" }).getByRole("tab", { name: /Repro task/ });
   const to = await page.getByText("Drop files here to open them").boundingBox();
   const from = await title.boundingBox();
   await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
@@ -76,7 +79,7 @@ test("drags the docked conversation back onto the empty editor", async ({ page }
   await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 10 });
   await page.mouse.up();
 
-  await expect(page.getByRole("tab", { name: "Repro task" })).toBeVisible();
+  await expect(page.locator("[data-editor-area]").getByRole("tab", { name: "Repro task" })).toBeVisible();
 });
 
 test("docks a session tab dropped on the tool window", async ({ page }) => {
@@ -112,8 +115,10 @@ test("docks a session tab dropped on the tool window", async ({ page }) => {
   await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 10 });
   await page.mouse.up();
 
-  // Docked: the tab closes and the tool window gives itself to the conversation.
-  await expect(page.getByRole("tab", { name: "Repro task" })).toHaveCount(0);
+  // Docked: the editor tab closes and the conversation appears in the tool window's tabs.
+  await expect(page.locator("[data-editor-area]").getByRole("tab", { name: "Repro task" })).toHaveCount(0);
   await expect(page.getByRole("tree", { name: "Agent tasks" })).toHaveCount(0);
-  await expect(page.locator("span[title='Repro task']").first()).toBeVisible();
+  await expect(
+    page.getByRole("tablist", { name: "Agent sessions" }).getByRole("tab", { name: /Repro task/ }),
+  ).toBeVisible();
 });
