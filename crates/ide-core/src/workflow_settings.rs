@@ -46,6 +46,7 @@ impl Default for VcsSettings {
 pub struct GitSettings {
     /// Show blame after the current editor line.
     pub inline_blame: bool,
+    pub show_branch_in_project_view: bool,
     /// Path to the git executable; empty = auto-detect.
     pub executable: String,
     /// Default of Update Project: `merge` | `rebase`.
@@ -77,6 +78,7 @@ impl Default for GitSettings {
     fn default() -> Self {
         Self {
             inline_blame: false,
+            show_branch_in_project_view: false,
             executable: String::new(),
             update_method: "merge".into(),
             auto_update_on_push_rejected: false,
@@ -118,6 +120,13 @@ pub struct CommitSettings {
     pub wrap_at_margin: bool,
     /// Plugin before-commit checks turned off (`<plugin id>/<check id>`); the rest run.
     pub disabled_plugin_checks: Vec<String>,
+    /// Double-click / Enter in the changes view: `None` follows the interface (the
+    /// Commit tool window opens the diff, Local Changes the source file).
+    ///
+    /// No `skip_serializing_if`: an unset value must still appear in
+    /// `Settings::default()`, or `SettingsStore::set` rejects the key as unknown.
+    #[specta(optional)]
+    pub double_click_opens_diff: Option<bool>,
 }
 
 impl Default for CommitSettings {
@@ -138,6 +147,7 @@ impl Default for CommitSettings {
             show_right_margin: true,
             wrap_at_margin: false,
             disabled_plugin_checks: Vec::new(),
+            double_click_opens_diff: None,
         }
     }
 }
@@ -315,6 +325,7 @@ pub struct TerminalSettings {
     pub override_ide_shortcuts: bool,
     pub shell_integration: bool,
     pub highlight_hyperlinks: bool,
+    pub highlight_selection: bool,
     pub option_as_meta: bool,
     /// Escape moves focus to the editor instead of reaching the shell.
     pub escape_to_editor: bool,
@@ -347,6 +358,7 @@ impl Default for TerminalSettings {
             override_ide_shortcuts: true,
             shell_integration: true,
             highlight_hyperlinks: true,
+            highlight_selection: true,
             option_as_meta: false,
             escape_to_editor: false,
             cursor_shape: "block".into(),

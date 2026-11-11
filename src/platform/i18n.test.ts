@@ -256,6 +256,9 @@ describe("catalogs", () => {
   /** Product names intentionally kept as written in every locale. */
   const SAME_AS_ENGLISH = new Set([
     "Docker",
+    "JUnit",
+    "⌘Enter",
+    "Fork",
     "Shell",
     "Java",
     "Python",
@@ -268,6 +271,7 @@ describe("catalogs", () => {
     "SQL",
     "JavaScript",
     "TypeScript",
+    "Tailwind CSS",
     "HTML",
     "CSS",
     "JSON",

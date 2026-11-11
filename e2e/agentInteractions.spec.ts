@@ -200,9 +200,11 @@ test("uses readable reasoning text and a centered floating jump button", async (
   await stream.evaluate((el) => {
     el.scrollTop = 0;
   });
-  const process = stream.locator("[class*='_processRun_'] > summary");
-  await expect(process).toHaveCSS("font-size", "15px");
-  await process.click();
+  const turn = stream.locator("[class*='_turnFold_'] > summary");
+  await expect(turn).toHaveCSS("font-size", "15px");
+  await turn.click();
+  await expect(stream.locator("[class*='_processRun_'] > summary")).toHaveCount(0);
+  await expect(stream.getByText("Read 1 file", { exact: true })).toHaveCount(1);
   const thought = stream.locator("[class*='_thought_'] > summary");
   await expect(thought).toHaveCSS("font-size", "15px");
   await thought.click();
