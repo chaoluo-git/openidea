@@ -1,6 +1,8 @@
 //! Folds ACP `session/update` notifications into a task's entries.
 
-use crate::model::{AgentEntry, AgentPlanItem, AgentSubagentStatus, AgentToolDiff, AgentToolStatus};
+use crate::model::{
+    AgentDiffPreview, AgentEntry, AgentPlanItem, AgentSubagentStatus, AgentToolCommand, AgentToolDiff, AgentToolStatus,
+};
 use ide_core::IpcPath;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -67,6 +69,7 @@ impl Timeline {
                     status: tool_status(update.get("status")).unwrap_or(AgentToolStatus::Pending),
                     locations: locations(update.get("locations")),
                     output: None,
+                    command: None,
                     diffs: Vec::new(),
                 };
                 let index = match self.tools.get(&id) {
@@ -127,7 +130,8 @@ impl Timeline {
     }
 
     fn merge_tool(&mut self, index: usize, update: &Value) {
-        let AgentEntry::Tool { title, kind, status, locations: locs, output, diffs, .. } = &mut self.entries[index]
+        let AgentEntry::Tool { title, kind, status, locations: locs, output, command, diffs, .. } =
+            &mut self.entries[index]
         else {
             return;
         };
@@ -143,9 +147,28 @@ impl Timeline {
         if update.get("locations").is_some_and(Value::is_array) {
             *locs = locations(update.get("locations"));
         }
+        if let Some(input) = update.get("rawInput") {
+            let directory = input.get("cwd").or_else(|| input.get("workdir"));
+            let cwd = directory.map_or_else(
+                || command.as_ref().and_then(|c| c.cwd.clone()),
+                |value| value.as_str().map(|path| IpcPath(path.into())),
+            );
+            if let Some(value) = input.get("command").or_else(|| input.get("cmd")) {
+                // Never leave a stale command, or offer a truncated one for copying.
+                *command = value
+                    .as_str()
+                    .filter(|text| !text.is_empty() && text.len() <= MAX_OUTPUT)
+                    .map(|text| AgentToolCommand { text: text.to_owned(), cwd });
+            } else if directory.is_some()
+                && let Some(command) = command
+            {
+                command.cwd = cwd;
+            }
+        }
         let Some(content) = update.get("content").and_then(Value::as_array) else { return };
         let mut text = String::new();
         let mut new_diffs = Vec::new();
+        let mut preview_budget = MAX_OUTPUT;
         for item in content {
             match item.get("type").and_then(Value::as_str) {
                 Some("content") => {
@@ -160,7 +183,27 @@ impl Timeline {
                     let old = item.get("oldText").and_then(Value::as_str).unwrap_or_default();
                     let new = item.get("newText").and_then(Value::as_str).unwrap_or_default();
                     let (added, removed) = line_stats(old, new);
-                    new_diffs.push(AgentToolDiff { path: IpcPath(str_field(item, "path").into()), added, removed });
+                    // Bound persisted snapshots per call; never truncate them into a misleading diff.
+                    let patch = item.get("patch").and_then(Value::as_str);
+                    let bytes = patch.map_or_else(|| old.len().saturating_add(new.len()), str::len);
+                    let preview = if bytes <= preview_budget && item.get("newText").is_some_and(Value::is_string) {
+                        preview_budget -= bytes;
+                        if let Some(text) = patch {
+                            (!text.is_empty()).then(|| AgentDiffPreview::Patch { text: text.to_owned() })
+                        } else if item.get("excerpt").and_then(Value::as_bool) == Some(true) {
+                            Some(AgentDiffPreview::Snippet { before: old.to_owned(), after: new.to_owned() })
+                        } else {
+                            Some(AgentDiffPreview::Text { before: old.to_owned(), after: new.to_owned() })
+                        }
+                    } else {
+                        None
+                    };
+                    new_diffs.push(AgentToolDiff {
+                        path: IpcPath(str_field(item, "path").into()),
+                        added,
+                        removed,
+                        preview,
+                    });
                 }
                 _ => {}
             }
@@ -407,6 +450,57 @@ mod tests {
     }
 
     #[test]
+    fn command_input_survives_output_only_updates_without_guessing_from_titles() {
+        let mut t = Timeline::default();
+        t.apply(
+            &json!({"sessionUpdate":"tool_call", "toolCallId":"cmd", "title":"Check dependencies", "kind":"execute"}),
+        );
+        t.apply(&json!({"sessionUpdate":"tool_call_update", "toolCallId":"cmd",
+            "rawInput":{"command":"printf 'one\\ntwo\\n'", "cwd":"/project"}}));
+        t.apply(&json!({"sessionUpdate":"tool_call_update", "toolCallId":"cmd", "content":[
+            {"type":"content", "content":{"type":"text", "text":"one\ntwo\n"}}
+        ]}));
+        let AgentEntry::Tool { command, output, .. } = &t.entries[0] else { panic!() };
+        assert_eq!(
+            command,
+            &Some(AgentToolCommand { text: "printf 'one\\ntwo\\n'".into(), cwd: Some(IpcPath("/project".into())) })
+        );
+        assert_eq!(output.as_deref(), Some("one\ntwo\n"));
+        t.apply(
+            &json!({"sessionUpdate":"tool_call_update", "toolCallId":"cmd", "rawInput":{"command":"echo changed"}}),
+        );
+        assert!(
+            matches!(&t.entries[0], AgentEntry::Tool { command:Some(c), ..} if c.cwd == Some(IpcPath("/project".into())))
+        );
+        t.apply(&json!({"sessionUpdate":"tool_call_update", "toolCallId":"cmd", "rawInput":{"command":"x".repeat(MAX_OUTPUT + 1)}}));
+        assert!(matches!(&t.entries[0], AgentEntry::Tool { command: None, .. }));
+        t.apply(
+            &json!({"sessionUpdate":"tool_call", "toolCallId":"description", "title":"Run checks", "kind":"execute"}),
+        );
+        assert!(matches!(&t.entries[1], AgentEntry::Tool { command: None, .. }));
+        let old: AgentEntry = serde_json::from_value(json!({"type":"tool", "id":"old", "title":"old", "kind":"execute", "status":"completed", "locations":[], "output":null, "diffs":[]})).unwrap();
+        assert!(matches!(old, AgentEntry::Tool { command: None, .. }));
+    }
+
+    #[test]
+    fn diff_previews_preserve_new_files_and_bound_the_total_snapshot_size() {
+        let mut t = Timeline::default();
+        t.apply(&json!({"sessionUpdate": "tool_call", "toolCallId": "c", "kind": "edit", "content": [
+            {"type": "diff", "path": "/a", "oldText": null, "newText": "新文件\n"},
+            {"type": "diff", "path": "/b", "oldText": "x".repeat(MAX_OUTPUT), "newText": "changed\n"},
+            {"type": "diff", "path": "/c", "oldText": "old\n", "newText": "new\n"}
+        ]}));
+        let AgentEntry::Tool { diffs, .. } = &t.entries[0] else { panic!() };
+        assert_eq!(diffs[0].preview, Some(AgentDiffPreview::Text { before: String::new(), after: "新文件\n".into() }));
+        assert_eq!(diffs[1].preview, None);
+        assert_eq!((diffs[1].added, diffs[1].removed), (1, 1));
+        assert!(diffs[2].preview.is_some());
+        let legacy: AgentToolDiff = serde_json::from_value(json!({"path": "/old", "added": 2, "removed": 0})).unwrap();
+        assert_eq!(legacy.preview, None);
+        assert!(serde_json::to_value(legacy).unwrap().get("preview").is_none());
+    }
+
+    #[test]
     fn tool_calls_update_in_place() {
         let mut t = Timeline::default();
         t.apply(&json!({"sessionUpdate": "tool_call", "toolCallId": "c1", "title": "Edit a.rs", "kind": "edit",
@@ -419,7 +513,15 @@ mod tests {
         assert_eq!(applied.changed, vec![0]);
         let AgentEntry::Tool { status, diffs, output, locations, .. } = &t.entries[0] else { panic!() };
         assert_eq!(*status, AgentToolStatus::Completed);
-        assert_eq!(diffs, &vec![AgentToolDiff { path: IpcPath("/p/a.rs".into()), added: 2, removed: 1 }]);
+        assert_eq!(
+            diffs,
+            &vec![AgentToolDiff {
+                path: IpcPath("/p/a.rs".into()),
+                added: 2,
+                removed: 1,
+                preview: Some(AgentDiffPreview::Text { before: "a\nb\n".into(), after: "a\nB\nc\n".into() }),
+            }]
+        );
         assert_eq!(output.as_deref(), Some("done"));
         assert_eq!(locations, &vec![IpcPath("/p/a.rs".into())]);
         // Unknown calls are ignored.

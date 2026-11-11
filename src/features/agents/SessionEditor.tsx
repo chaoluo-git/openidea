@@ -77,6 +77,9 @@ import {
   type PermissionEntry,
 } from "./permission";
 import { Markdown } from "./Markdown";
+import { ToolDiffPreview } from "./ToolDiffPreview";
+import { ToolCommand, ToolOutput } from "./ToolCommand";
+import { activityTitle, commandOutput, isFileAcknowledgement } from "./toolPresentation";
 import { MessageText } from "./MessageText";
 import { createFollowScroll } from "./followScroll";
 import { useAgentErrorText } from "./loginHint";
@@ -513,9 +516,9 @@ interface StreamProps {
 /** Entries rendered at a time when a conversation opens at its end. */
 const ENTRY_BATCH = 40;
 
-function scrollsInside(target: EventTarget | null, root: HTMLElement): boolean {
+function scrollsInside(target: EventTarget | null, root: HTMLElement, down = false): boolean {
   for (let el = target instanceof Element ? target : null; el && el !== root; el = el.parentElement) {
-    if (el.scrollTop <= 0) continue;
+    if (down ? el.scrollHeight - el.scrollTop - el.clientHeight < 1 : el.scrollTop <= 0) continue;
     const overflow = getComputedStyle(el).overflowY;
     if (overflow === "auto" || overflow === "scroll") return true;
   }
@@ -536,9 +539,13 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
   // Opened at the end, the last entries come first and the earlier ones follow in batches:
   // reopening a long conversation paints at once. A kept offset needs them all.
   const [shown, setShown] = useState(() => (positions.get(key)?.stick === false ? Infinity : ENTRY_BATCH));
-  let start = finding || !entries ? 0 : Math.max(0, entries.length - shown);
+  const visible = useEditorShown();
+  const [firstShown, setFirstShown] = useState(Infinity);
+  let start = finding || !entries ? 0 : Math.min(firstShown, Math.max(0, entries.length - shown));
+  // Appending beyond the paint window must not evict content the reader is inspecting.
   // Keep a process run intact so prepending never replaces the anchored row.
   while (entries && start > 0 && isProcessEntry(entries[start]!) && isProcessEntry(entries[start - 1]!)) start--;
+  if (entries && start < firstShown) setFirstShown(start);
   const dragging = useRef(false);
   const busy = subagent ? subagentWorking(subagent.status) : isBusy(task.status);
   const follower = useRef<ReturnType<typeof createFollowScroll> | null>(null);
@@ -594,6 +601,19 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
     },
     [key, positions],
   );
+  const pauseForReading = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    follower.current?.cancel();
+    scrollingUp.current = true;
+    position.current = { top: el.scrollTop, stick: false };
+    positions.set(key, position.current);
+    setAway(true);
+  }, [key, positions]);
+  const conversationScroll = useMemo(
+    () => ({ opened: openFolds, pause: pauseForReading, following: () => position.current.stick }),
+    [openFolds, pauseForReading],
+  );
   // Earlier entries are prepended above the view: remember where the first painted row is
   // so the content stays put and the scrollbar doesn't jump under the pointer.
   const anchor = useRef<{ el: Element; top: number } | null>(null);
@@ -602,8 +622,8 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
     if (!el || start <= 0 || dragging.current || anchor.current) return;
     const first = el.firstElementChild;
     if (!position.current.stick && first) anchor.current = { el: first, top: first.getBoundingClientRect().top };
-    startTransition(() => setShown((n) => n + ENTRY_BATCH));
-  }, [start]);
+    startTransition(() => setShown((n) => Math.max(n, (entries?.length ?? 0) - start) + ENTRY_BATCH));
+  }, [start, entries?.length]);
   const loadTimer = useRef<number | null>(null);
   /** Load the next batch once the user stops scrolling near the top. */
   const loadWhenStill = useCallback(() => {
@@ -641,11 +661,10 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
     // Following the end, paint the rest in the background. A user who scrolled away
     // gets them only after stopping near the top (`loadWhenStill`), so the scrollbar
     // is not resized mid-drag.
-    if (start > 0 && position.current.stick && !dragging.current)
+    if (visible && start > 0 && position.current.stick && !dragging.current)
       startTransition(() => setShown((n) => n + ENTRY_BATCH));
-  }, [start]);
+  }, [start, visible]);
   // Hidden behind another tab, it has no layout to scroll; shown again, it follows the end again.
-  const visible = useEditorShown();
   useOffscreenRows(ref, visible, !finding);
   /** A diagram that drew after the last streamed chunk grows the conversation: keep following. */
   const onDiagramDrawn = useCallback(() => {
@@ -711,6 +730,7 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
     const el = ref.current;
     if (!el) return;
     scrollingUp.current = false;
+    userScrolled.current = -Infinity;
     position.current = { top: el.scrollTop, stick: true };
     followEnd(true, true);
     setAway(false);
@@ -720,7 +740,8 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
   const turns = useMemo(() => (entries && !subagent ? turnNumbers(entries) : null), [entries, subagent]);
   const replies = useMemo(() => (entries && !subagent ? replyTurns(entries) : null), [entries, subagent]);
   const times = useMemo(() => (entries && !subagent ? replyTimes(entries) : null), [entries, subagent]);
-  const lastIndex = entries ? entries.length - 1 : -1;
+  let lastIndex = entries ? entries.length - 1 : -1;
+  if (entries && lastIndex >= 0 && isFileAcknowledgement(entries[lastIndex]!, entries[lastIndex - 1])) lastIndex--;
   // Keep the row stable when earlier history is prepended; its author can move with the work.
   const { foldTurns, toolCalls } = useAgentSettings();
   const rows = useMemo(() => {
@@ -745,6 +766,7 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
     (row: EntryRow) => (
       <Entry
         key={row.index}
+        index={row.index}
         task={task}
         entry={row.entry}
         turn={turns?.get(row.index) ?? null}
@@ -780,7 +802,7 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
       renderRow(row)
     );
   return (
-    <OpenFolds.Provider value={openFolds}>
+    <ConversationScroll.Provider value={conversationScroll}>
       <div
         className={styles.streamArea}
         onWheel={markUserScroll}
@@ -797,7 +819,13 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
           onWheel={(e) => {
             markUserScroll();
             if (e.deltaY < 0 && !e.ctrlKey && !e.defaultPrevented) stopFollowing(e.target);
-            else if (e.deltaY > 0 && !e.ctrlKey && !e.defaultPrevented) scrollingUp.current = false;
+            else if (
+              e.deltaY > 0 &&
+              !e.ctrlKey &&
+              !e.defaultPrevented &&
+              !scrollsInside(e.target, e.currentTarget, true)
+            )
+              scrollingUp.current = false;
           }}
           onTouchStart={(e) => {
             touchY.current = e.touches.length === 1 ? e.touches[0]!.clientY : null;
@@ -806,7 +834,13 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
             markUserScroll();
             const y = e.touches.length === 1 ? e.touches[0]!.clientY : null;
             if (y !== null && touchY.current !== null && y > touchY.current) stopFollowing(e.target);
-            else if (y !== null && touchY.current !== null && y < touchY.current) scrollingUp.current = false;
+            else if (
+              y !== null &&
+              touchY.current !== null &&
+              y < touchY.current &&
+              !scrollsInside(e.target, e.currentTarget, true)
+            )
+              scrollingUp.current = false;
             touchY.current = y;
           }}
           onKeyDown={(e) => {
@@ -814,12 +848,15 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
             if (e.defaultPrevented || (e.target as Element).closest("input, textarea, [contenteditable]")) return;
             if (e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home" || (e.key === " " && e.shiftKey))
               stopFollowing(e.target);
-            else if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === "End" || (e.key === " " && !e.shiftKey))
+            else if (
+              (e.key === "ArrowDown" || e.key === "PageDown" || e.key === "End" || (e.key === " " && !e.shiftKey)) &&
+              !scrollsInside(e.target, e.currentTarget, true)
+            )
               scrollingUp.current = false;
           }}
-          onPointerDown={() => {
+          onPointerDown={(e) => {
             markUserScroll();
-            scrollingUp.current = false;
+            if (e.target === e.currentTarget) scrollingUp.current = false;
           }}
           onScroll={(e) => {
             if (!visible) return;
@@ -911,7 +948,7 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
         </div>
         {away && !!entries?.length && <JumpToLatest onJump={jumpToLatest} />}
       </div>
-    </OpenFolds.Provider>
+    </ConversationScroll.Provider>
   );
 }
 
@@ -1204,11 +1241,13 @@ export function thoughtPreview(text: string): string {
 
 /** The agent's reasoning: open while it streams, folded after, as Settings › Agents › Chat says. */
 function ThoughtEntry({
+  index,
   task,
   text,
   working,
   onDiagramDrawn,
 }: {
+  index: number;
   task: AgentTask;
   text: string;
   working: boolean;
@@ -1224,6 +1263,7 @@ function ThoughtEntry({
   return (
     <div className={styles.process}>
       <Fold
+        id={`thought:${index}`}
         className={clsx(styles.thought, thinking === "auto" && working && styles.thoughtLive)}
         open={open}
         summary={
@@ -1248,6 +1288,7 @@ function ThoughtEntry({
 }
 
 const Entry = memo(function Entry({
+  index,
   task,
   entry,
   turn,
@@ -1258,6 +1299,7 @@ const Entry = memo(function Entry({
   onOpenSubagent,
   onDiagramDrawn,
 }: {
+  index: number;
   task: AgentTask;
   entry: AgentEntry;
   /** Number of the turn this message started (from 0), when it started one. */
@@ -1286,26 +1328,13 @@ const Entry = memo(function Entry({
         />
       );
     case "thought":
-      return <ThoughtEntry task={task} text={entry.text} working={working} onDiagramDrawn={onDiagramDrawn} />;
-    case "tool":
-      return <ToolEntry task={task} entry={entry} />;
-    case "plan":
       return (
-        <div className={styles.plan}>
-          <div className={styles.planTitle}>
-            <T>Plan</T>
-          </div>
-          {entry.items.map((item, i) => (
-            <div key={i} className={clsx(styles.planItem, item.status === "completed" && styles.planDone)}>
-              <Icon
-                name={item.status === "completed" ? "check" : item.status === "in_progress" ? "run" : "minus"}
-                size={12}
-              />
-              {item.content}
-            </div>
-          ))}
-        </div>
+        <ThoughtEntry index={index} task={task} text={entry.text} working={working} onDiagramDrawn={onDiagramDrawn} />
       );
+    case "tool":
+      return <ToolEntry task={task} entry={entry} index={index} />;
+    case "plan":
+      return <PlanCard entry={entry} index={index} />;
     case "subagent":
       return (
         <SubagentCard
@@ -1624,6 +1653,16 @@ function ImageStrip({ images, onRemove }: { images: AgentImage[]; onRemove?: (in
 
 type ToolEntryData = Extract<AgentEntry, { type: "tool" }>;
 
+function readingEntry(opened: Map<string, boolean> | undefined, entry: AgentEntry, index: number) {
+  return (
+    opened?.get(`thought:${index}`) ||
+    opened?.get(`tool:${index}`) ||
+    opened?.get(`plan:${index}`) ||
+    (entry.type === "subagent" && opened?.get(`subagent:${entry.id}:activity`)) ||
+    (entry.type === "tool" && entry.diffs.some((diff, part) => opened?.get(`tool:${index}:${diff.path}:${part}`)))
+  );
+}
+
 /** An entry and its index in the whole conversation (not in the painted tail). */
 type IndexedEntry = { index: number; entry: AgentEntry };
 
@@ -1650,7 +1689,12 @@ const isProcessEntry = (entry: AgentEntry) => entry.type === "thought" || entry.
  * one folded row (the work behind a decision), so messages and decisions stay readable.
  */
 export function conversationRows(entries: readonly AgentEntry[], from: number, group = true): ConversationRow[] {
-  if (!group) return entries.slice(from).map((entry, i) => ({ kind: "entry", index: from + i, entry }));
+  if (!group)
+    return entries
+      .slice(from)
+      .flatMap((entry, i) =>
+        isFileAcknowledgement(entry, entries[from + i - 1]) ? [] : [{ kind: "entry" as const, index: from + i, entry }],
+      );
   const rows: ConversationRow[] = [];
   let run: IndexedEntry[] = [];
   const flush = () => {
@@ -1659,6 +1703,7 @@ export function conversationRows(entries: readonly AgentEntry[], from: number, g
     run = [];
   };
   entries.slice(from).forEach((entry, i) => {
+    if (isFileAcknowledgement(entry, entries[from + i - 1])) return;
     if (isProcessEntry(entry)) run.push({ index: from + i, entry });
     else {
       flush();
@@ -1709,15 +1754,23 @@ function TurnFold({
   children: ReactNode;
 }) {
   const tx = useTx();
+  const scroll = useContext(ConversationScroll);
+  const opened = scroll?.opened;
   const { turn } = row;
-  const work = summarizeWork(entries.slice(turn.user + 1, turn.reply));
+  const activity = entries.slice(turn.user + 1, turn.reply);
+  const work = summarizeWork(activity);
   const parts = workSummaryText(work, tx, 0);
-  const messages = entries.slice(turn.user + 1, turn.reply).filter((e) => e.type === "agent").length;
+  const messages = activity.filter((e) => e.type === "agent").length;
+  const reading = activity.some((entry, offset) => {
+    const index = turn.user + 1 + offset;
+    return readingEntry(opened, entry, index) || opened?.get(`run:${index}`);
+  });
   if (messages) parts.push(tx(messages === 1 ? "1 message" : "{count} messages").replace("{count}", String(messages)));
   const took = turn.sentMs != null && turn.doneMs != null ? formatDuration(turn.doneMs - turn.sentMs) : null;
   return (
     <Fold
       id={`turn:${turn.user}`}
+      autoOpen={reading}
       className={clsx(styles.turnFold, styles.process)}
       summary={
         <summary className={styles.processSummary}>
@@ -1752,27 +1805,27 @@ const ProcessRun = memo(function ProcessRun({
   collapsible: boolean;
 }) {
   const tx = useTx();
+  const scroll = useContext(ConversationScroll);
+  const opened = scroll?.opened;
   const tools = row.entries.filter(
     (item): item is IndexedEntry & { entry: ToolEntryData } => item.entry.type === "tool",
   );
   const work = summarizeWork(row.entries.map(({ entry }) => entry));
   const { added, removed } = work;
   const working = busy && row.entries.some(({ index }) => index === lastIndex);
+  const reading = row.entries.some(({ entry, index }) => readingEntry(opened, entry, index));
   const parts = workSummaryText(work, tx, tools.length);
   // What the run is doing now: the call still running, or the reasoning it ends with.
   const live = [...tools].reverse().find(({ entry }) => liveTool(entry))?.entry;
+  const running = working || (busy && !!live);
   const last = row.entries.at(-1)!.entry;
-  const current = live
-    ? shortTitle(task, live.title || live.kind)
-    : working && last.type === "thought"
-      ? tx("Thinking")
-      : null;
+  const current = live ? activityTitle(live, task.cwd) : working && last.type === "thought" ? tx("Thinking") : null;
   // While the run grows, its open body follows the latest call unless scrolled up.
   const body = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   useLayoutEffect(() => {
     const el = body.current;
-    if (el && working && following.current) el.scrollTop = el.scrollHeight;
+    if (el && running && following.current && scroll?.following() !== false) el.scrollTop = el.scrollHeight;
   });
   const content = (
     <div
@@ -1785,10 +1838,11 @@ const ProcessRun = memo(function ProcessRun({
     >
       {row.entries.map(({ index, entry }) =>
         entry.type === "tool" ? (
-          <ToolEntry key={index} task={task} entry={entry} />
+          <ToolEntry key={index} task={task} entry={entry} index={index} />
         ) : entry.type === "thought" ? (
           <ThoughtEntry
             key={index}
+            index={index}
             task={task}
             text={entry.text}
             working={busy && index === lastIndex}
@@ -1803,7 +1857,7 @@ const ProcessRun = memo(function ProcessRun({
     <Fold
       id={`run:${row.index}`}
       className={clsx(styles.processRun, styles.process)}
-      autoOpen={working}
+      autoOpen={running || reading}
       summary={
         <summary className={styles.processSummary}>
           <Icon name="chevron-right" size={12} className={styles.processChevron} />
@@ -1822,11 +1876,12 @@ const ProcessRun = memo(function ProcessRun({
 /** Set while Find in Conversation is open: folded sections render their content, so it is found. */
 const FoldedContent = createContext(false);
 
-/**
- * Which keyed folds of a conversation the reader opened. A fold's row can remount (a run
- * grows from one call to two, a finished turn folds its work away); this keeps it as it was.
- */
-const OpenFolds = createContext<Map<string, boolean> | null>(null);
+/** Reading a fold pauses live scrollers and remembers opened content across row regrouping. */
+const ConversationScroll = createContext<{
+  opened: Map<string, boolean>;
+  pause: () => void;
+  following: () => boolean;
+} | null>(null);
 
 /**
  * A collapsed section that renders its content only once opened: most of a long conversation
@@ -1840,7 +1895,7 @@ function Fold({
   summary,
   children,
 }: {
-  /** Remembers whether the reader opened it across remounts (`OpenFolds`). */
+  /** Remembers whether the reader opened it across remounts. */
   id?: string;
   className?: string;
   open?: boolean;
@@ -1850,23 +1905,43 @@ function Fold({
   children: ReactNode;
 }) {
   const always = useContext(FoldedContent);
-  const remembered = useContext(OpenFolds);
-  const [expanded, setExpanded] = useState(() => !!open || !!autoOpen || (!!id && !!remembered?.get(id)));
+  const scroll = useContext(ConversationScroll);
+  const remembered = scroll?.opened;
+  const manual = useRef(false);
+  const automatic = useRef(autoOpen);
+  useLayoutEffect(() => {
+    // A manual collapse lasts for this live run; the next run can reveal its progress again.
+    if (automatic.current && !autoOpen && id && remembered?.get(id) === false) remembered.delete(id);
+    automatic.current = autoOpen;
+  }, [autoOpen, id, remembered]);
+  const wanted = (id ? remembered?.get(id) : undefined) ?? !!(open || autoOpen);
+  const [expanded, setExpanded] = useState(wanted);
   return (
     <details
       className={className}
-      open={open || autoOpen || (!!id && remembered?.get(id)) || undefined}
+      open={wanted || undefined}
+      onClickCapture={(e) => {
+        const target = e.target as Element;
+        if (
+          target.closest("summary")?.parentElement !== e.currentTarget ||
+          target.closest("button, a, input, select, textarea")
+        )
+          return;
+        manual.current = true;
+        if (!e.currentTarget.open) scroll?.pause();
+      }}
       onToggle={(e) => {
         const now = e.currentTarget.open;
-        setExpanded(now);
-        if (id && remembered && !open && !autoOpen) {
-          if (now) remembered.set(id, true);
-          else remembered.delete(id);
+        if (manual.current || now !== wanted) {
+          if (id && remembered) remembered.set(id, now);
+          if (now && !manual.current) scroll?.pause();
         }
+        manual.current = false;
+        setExpanded(now);
       }}
     >
       {summary}
-      {(expanded || open || autoOpen || always) && children}
+      {(expanded || wanted || always) && children}
     </details>
   );
 }
@@ -1874,57 +1949,160 @@ function Fold({
 const ToolEntry = memo(function ToolEntry({
   task,
   entry,
+  index,
 }: {
   task: AgentTask;
   entry: Extract<AgentEntry, { type: "tool" }>;
+  index: number;
 }) {
+  const tx = useTx();
   const { expandToolOutput } = useAgentSettings();
+  const output = commandOutput(entry.output ?? "");
+  const failed = entry.status === "failed" || (output.exit !== null && output.exit !== 0);
+  const openFileDiff = (diff: (typeof entry.diffs)[number]) => {
+    const preview = diff.preview;
+    const action =
+      preview?.type === "text"
+        ? openDiff({
+            path: diff.path,
+            title: `${basename(diff.path)} (${tx("Before")} ↔ ${tx("After")})`,
+            left: { type: "text", text: preview.before, label: tx("Before") },
+            right: { type: "text", text: preview.after, label: tx("After") },
+          })
+        : openChangeDiff(task, diff.path);
+    void action.catch((error) =>
+      notifications().notify({ level: "error", title: "Cannot open diff", body: String(error) }),
+    );
+  };
   const head = (
     <>
       <Icon name={TOOL_ICONS[entry.kind] ?? "run"} size={14} />
       <span className={clsx(styles.toolTitle, liveTool(entry) && styles.shimmer)} title={entry.title || entry.kind}>
-        {shortTitle(task, entry.title || entry.kind)}
+        {activityTitle(entry, task.cwd)}
       </span>
-      {entry.diffs.map((d) => (
-        <button
-          key={d.path}
-          type="button"
-          className={styles.toolDiff}
-          title={d.path}
-          onClick={(e) => {
-            e.preventDefault();
-            void openChangeDiff(task, d.path);
-          }}
-        >
-          <span className={styles.added}>+{d.added}</span> <span className={styles.removed}>−{d.removed}</span>
-        </button>
-      ))}
-      {entry.status === "failed" && <Icon name="error" size={12} />}
+      {failed && <Icon name="error" size={12} label="Failed" />}
     </>
   );
-  if (!entry.output)
-    return (
-      <div className={styles.process}>
-        <div className={styles.tool}>{head}</div>
+  const files =
+    entry.diffs.length > 0 ? (
+      <div className={styles.toolFiles}>
+        {entry.diffs.map((diff, part) => (
+          <Fold
+            key={`${diff.path}:${part}`}
+            id={`tool:${index}:${diff.path}:${part}`}
+            className={styles.toolFile}
+            autoOpen={expandToolOutput || liveTool(entry)}
+            summary={
+              <summary className={styles.toolFileHeader} title={diff.path}>
+                <Icon name="chevron-right" size={12} className={styles.toolChevron} />
+                <span className={styles.toolTitle}>{basename(diff.path)}</span>
+                <span className={styles.toolFileStats}>
+                  {diff.added > 0 && <span className={styles.added}>+{diff.added}</span>}
+                  {diff.removed > 0 && <span className={styles.removed}>−{diff.removed}</span>}
+                </span>
+                {failed && <Icon name="error" size={12} label="Failed" />}
+                <IconButton
+                  icon="diff-side-by-side"
+                  title={diff.preview?.type === "text" ? "Open full diff" : "View current changes"}
+                  size="small"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openFileDiff(diff);
+                  }}
+                />
+              </summary>
+            }
+          >
+            {diff.preview ? (
+              <ToolDiffPreview diff={diff.preview} />
+            ) : (
+              <button type="button" className={styles.toolPreviewNote} onClick={() => openFileDiff(diff)}>
+                <T>View current changes</T>
+              </button>
+            )}
+          </Fold>
+        ))}
       </div>
-    );
+    ) : null;
+  if (!entry.output && !entry.command)
+    return <div className={styles.process}>{files ?? <div className={styles.tool}>{head}</div>}</div>;
   return (
     <div className={styles.process}>
+      {files}
       <Fold
+        id={`tool:${index}`}
         className={styles.toolDetails}
-        open={liveTool(entry) || expandToolOutput}
+        autoOpen={liveTool(entry) || expandToolOutput || failed}
         summary={
           <summary className={styles.tool}>
             <Icon name="chevron-right" size={12} className={styles.toolChevron} />
-            {head}
+            {files ? (
+              <span className={styles.toolTitle}>
+                <T>Tool output</T>
+              </span>
+            ) : (
+              head
+            )}
+            {output.exit !== null && (
+              <span className={clsx(styles.toolExit, failed && styles.removed)} title={output.shell ?? undefined}>
+                {tx("Exit code {code}").replace("{code}", String(output.exit))}
+              </span>
+            )}
           </summary>
         }
       >
-        <pre className={styles.output}>{entry.output}</pre>
+        {entry.command ? (
+          <ToolCommand command={entry.command} cwd={task.cwd} output={output.text} running={liveTool(entry)} />
+        ) : (
+          output.text && <ToolOutput text={output.text} framed />
+        )}
       </Fold>
     </div>
   );
 });
+
+function PlanCard({ entry, index }: { entry: Extract<AgentEntry, { type: "plan" }>; index: number }) {
+  const tx = useTx();
+  const current = entry.items.findIndex((item) => item.status === "in_progress");
+  const complete = entry.items.filter((item) => item.status === "completed").length;
+  if (!entry.items.length) return null;
+  return (
+    <Fold
+      id={`plan:${index}`}
+      className={styles.plan}
+      autoOpen={complete < entry.items.length}
+      summary={
+        <summary className={styles.planSummary}>
+          <Icon name="chevron-right" size={12} className={styles.toolChevron} />
+          <span>
+            {current >= 0 ? current + 1 : complete}/{entry.items.length}
+          </span>
+          <span className={styles.planCurrent}>{current >= 0 ? entry.items[current]!.content : tx("Plan")}</span>
+        </summary>
+      }
+    >
+      <ol className={styles.planItems} aria-label={tx("Plan")}>
+        {entry.items.map((item, i) => (
+          <li
+            key={i}
+            className={styles.planItem}
+            data-status={item.status}
+            aria-current={item.status === "in_progress" ? "step" : undefined}
+          >
+            {item.status === "completed" ? (
+              <Icon name="check" size={14} className={styles.done} />
+            ) : item.status === "in_progress" ? (
+              <Spinner size={14} />
+            ) : (
+              <span className={styles.planPending} />
+            )}
+            <span>{item.content}</span>
+          </li>
+        ))}
+      </ol>
+    </Fold>
+  );
+}
 
 function SubagentStatusIcon({ status }: { status: SubagentEntry["status"] }) {
   switch (status) {
@@ -1997,6 +2175,18 @@ function SubagentCard({
           {shortTitle(task, entry.activity)}
         </div>
       )}
+      <Fold
+        id={`subagent:${entry.id}:activity`}
+        className={styles.subagentSection}
+        summary={
+          <summary>
+            <Icon name="chevron-right" size={12} className={styles.toolChevron} />
+            <T>Recent activity</T>
+          </summary>
+        }
+      >
+        <SubagentActivity task={task} entry={entry} onDiagramDrawn={onDiagramDrawn} />
+      </Fold>
       {entry.error && (
         <div className={styles.error} role="alert">
           <Icon name="error" size={14} />
@@ -2030,6 +2220,90 @@ function SubagentCard({
         </Fold>
       )}
     </div>
+  );
+}
+
+/** A bounded, read-only peek. The heading still opens the complete child conversation. */
+function SubagentActivity({
+  task,
+  entry,
+  onDiagramDrawn,
+}: {
+  task: AgentTask;
+  entry: SubagentEntry;
+  onDiagramDrawn: () => void;
+}) {
+  const key = entriesKey(task.id, entry.id);
+  const entries = useAgents((s) => s.entries.get(key));
+  const error = useAgents((s) => s.entryLoads.get(key)?.error);
+  const connected = useAgents((s) => s.loaded);
+  const [shown, setShown] = useState(40);
+  const [firstShown, setFirstShown] = useState(Infinity);
+  const [opened] = useState(() => new Map<string, boolean>());
+  const parent = useContext(ConversationScroll);
+  const scroll = useMemo(() => (parent ? { ...parent, opened } : null), [parent, opened]);
+  useEffect(() => {
+    if (connected && !useAgents.getState().entries.has(key)) void loadEntries(task.id, entry.id);
+  }, [connected, key, task.id, entry.id]);
+  if (error)
+    return (
+      <div className={styles.error} role="alert">
+        <span>{tx("Couldn't load the conversation: {0}").replace("{0}", error)}</span>
+        <Button onClick={() => void loadEntries(task.id, entry.id)}>
+          <T>Retry Loading Conversation</T>
+        </Button>
+      </div>
+    );
+  if (!entries) return <Spinner size={14} />;
+  const start = Math.min(firstShown, Math.max(0, entries.length - shown));
+  if (start < firstShown) setFirstShown(start);
+  return (
+    <ConversationScroll.Provider value={scroll}>
+      <div className={styles.subagentPreview}>
+        {start > 0 && (
+          <Button onClick={() => setShown(entries.length - start + 40)}>
+            <T>Show earlier activity</T>
+          </Button>
+        )}
+        {entries.slice(start).map((item, offset) => {
+          const index = start + offset;
+          switch (item.type) {
+            case "tool":
+              return <ToolEntry key={index} task={task} entry={item} index={index} />;
+            case "plan":
+              return <PlanCard key={index} entry={item} index={index} />;
+            case "thought":
+              return (
+                <ThoughtEntry
+                  key={index}
+                  index={index}
+                  task={task}
+                  text={item.text}
+                  working={subagentWorking(entry.status) && index === entries.length - 1}
+                  onDiagramDrawn={onDiagramDrawn}
+                />
+              );
+            case "agent":
+              return isFileAcknowledgement(item, entries[index - 1]) ? null : (
+                <AgentReply key={index} text={item.text} cwd={task.cwd} task={task} onDiagramDrawn={onDiagramDrawn} />
+              );
+            case "error":
+              return (
+                <div key={index} className={styles.error} role="alert">
+                  {item.message}
+                </div>
+              );
+            default:
+              return null;
+          }
+        })}
+        {!entries.length && (
+          <span className={styles.muted}>
+            <T>No conversation history</T>
+          </span>
+        )}
+      </div>
+    </ConversationScroll.Provider>
   );
 }
 

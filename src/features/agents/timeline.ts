@@ -70,7 +70,7 @@ function countTool(s: WorkSummary, e: ToolEntry, edited: Set<string>) {
     case "think":
       break;
     default:
-      s.other++;
+      if (!e.diffs.length) s.other++;
   }
 }
 

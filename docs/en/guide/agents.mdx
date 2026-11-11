@@ -64,6 +64,11 @@ The task tab shows the conversation: your messages, the agent's replies, its rea
 - Messages you send are queued and delivered when the turn ends (**Queued messages**). **Send now** stops the current turn and sends that message next; queued messages can also be edited or removed.
 - **Stop** ends the current turn.
 - `⌘F` / `Ctrl+F` finds text in the conversation.
+- Opening reasoning or tool details pauses following new output. **Scroll to bottom** resumes it. Task and subagent times include seconds, even after an hour.
+- Plans show the current step and completed items. Expand a subagent's **Recent activity** to inspect its tools without leaving the parent conversation; its heading opens the full conversation.
+- When the agent supplies the actual shell invocation, tool details separate the command, working directory and output. Hover over the command or output, or focus its controls, to copy it or toggle line wrapping.
+
+File changes show compact cards with line counts. Expand a card for the provider's captured change: complete file snapshots and unified patches retain their line numbers; replacement snippets without a known position are labelled **Changed excerpt**. **Open full diff** opens a captured full-file change. **View current changes** opens the task's current changes when a full snapshot is unavailable, including in older saved conversations.
 
 On your own messages you can **Edit** (the messages after it are replaced; files already changed stay as they are) or **Retract Message**. On replies you can **Copy Markdown**, **Quote Reply**, **Regenerate Response** and **Branch Conversation from Here**, which starts a new task from that point.
 

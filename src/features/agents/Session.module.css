@@ -845,20 +845,104 @@
 .toolDetails[open] > summary .toolChevron {
   transform: rotate(90deg);
 }
-.toolDiff {
-  font: inherit;
+.toolExit {
+  margin-left: auto;
+  flex: none;
+  color: var(--fg-muted);
   font-size: var(--fs-small);
-  border: 0;
-  background: none;
-  padding: 0 4px;
-  border-radius: var(--radius-small);
-  cursor: pointer;
-  white-space: nowrap;
 }
-.toolDiff:hover {
+.toolFiles {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  min-width: 0;
+}
+.toolFile {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-dialog);
+  overflow: hidden;
+}
+.toolFileHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: calc(var(--h-row) + var(--space-2));
+  padding: 0 var(--space-3);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+.toolFileHeader::-webkit-details-marker {
+  display: none;
+}
+.toolFileHeader:hover {
   background: var(--bg-hover);
 }
-
+.toolFileHeader .toolTitle {
+  flex: 1;
+}
+.toolFile[open] > .toolFileHeader .toolChevron {
+  transform: rotate(90deg);
+}
+.toolFileStats {
+  display: flex;
+  gap: var(--space-2);
+  flex: none;
+  font-size: var(--fs-ui);
+}
+.toolDiffPreview {
+  max-height: calc(var(--h-row) * 12);
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-ui);
+  line-height: 1.6;
+  color: var(--fg-secondary);
+}
+.toolDiffPreview table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+.toolDiffPreview td {
+  padding: 0 var(--space-2);
+  vertical-align: top;
+}
+.toolDiffPreview tr[data-change="added"] {
+  background: color-mix(in srgb, var(--diff-inserted) 55%, var(--bg-input));
+}
+.toolDiffPreview tr[data-change="removed"] {
+  background: color-mix(in srgb, var(--diff-deleted) 65%, var(--bg-input));
+}
+.toolLineNumber {
+  width: 1px;
+  min-width: 2ch;
+  text-align: right;
+  color: var(--fg-muted);
+  user-select: none;
+}
+.toolDiffPreview[data-excerpt="true"] .toolLineNumber {
+  display: none;
+}
+.toolLineText {
+  white-space: pre;
+  width: 100%;
+}
+.toolPreviewNote {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  color: var(--fg-muted);
+  background: var(--bg-input);
+  text-align: left;
+}
+button.toolPreviewNote {
+  cursor: pointer;
+}
 /* Reasoning and tool calls between messages, folded as one block per turn. */
 .processRun > summary {
   cursor: pointer;
@@ -932,36 +1016,144 @@
   border-left: 0;
 }
 .output {
-  margin: 4px 0 0;
   max-height: 240px;
-  overflow: auto;
-  padding: 8px 10px;
-  border-radius: var(--radius-small);
+}
+
+.plan {
+  min-width: 0;
+  color: var(--fg-secondary);
+  font-size: var(--fs-input-large);
+}
+.planSummary {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--h-row);
+  color: var(--fg-muted);
+  cursor: pointer;
+  list-style: none;
+}
+.planSummary::-webkit-details-marker {
+  display: none;
+}
+.plan[open] > summary .toolChevron {
+  transform: rotate(90deg);
+}
+.planCurrent {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.planItems {
+  margin: var(--space-2) 0;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
-  background: var(--bg-elev);
+  border-radius: var(--radius-dialog);
+  list-style: none;
+}
+.planItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  line-height: 1.6;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--fg-muted);
+}
+.planItem[data-status="in_progress"],
+.planItem[data-status="completed"] {
+  color: var(--fg-secondary);
+}
+.planItem > :first-child {
+  flex: none;
+  margin-top: calc(var(--space-2) / 2);
+}
+.planPending {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 1px dashed var(--fg-muted);
+  border-radius: 50%;
+}
+.shellCard {
+  --syn-keyword: var(--agent-code-keyword);
+  --syn-string: var(--agent-code-string);
+  --syn-comment: var(--agent-code-comment);
+  margin-top: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-dialog);
+  overflow: hidden;
+  min-width: 0;
+}
+.shellBlock,
+.shellOutput {
+  position: relative;
+  padding: var(--space-3);
+  min-width: 0;
+}
+.shellOutput {
+  border-top: 1px solid var(--border);
+}
+.shellLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: var(--space-2);
+  color: var(--fg-muted);
+  font-size: var(--fs-ui);
+}
+.shellBlock .shellLabel {
+  padding-right: calc(var(--h-control) * 2);
+}
+.shellActions {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  opacity: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-toolbar-button);
+}
+.shellBlock:hover .shellActions,
+.shellBlock:focus-within .shellActions,
+.shellOutput:hover .shellActions,
+.shellOutput:focus-within .shellActions {
+  opacity: 1;
+}
+.shellCommand {
+  margin: 0;
+  max-height: calc(var(--h-row) * 10);
+  overflow: auto;
   font-family: var(--font-mono);
   font-size: var(--fs-ui);
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--fg-secondary);
 }
-
-.plan {
+.shellCommand[data-wrap="false"] {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.toolOutput {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--bg-elev);
+}
+.subagentPreview {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  max-height: calc(var(--h-row) * 16);
+  overflow: auto;
+  min-width: 0;
 }
-.planTitle {
-  font-weight: 600;
-  color: var(--fg-strong);
-}
-.planItem {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.planDone {
-  color: var(--fg-muted);
-  text-decoration: line-through;
+.subagentSection[open] > summary .toolChevron {
+  transform: rotate(90deg);
 }
 
 .permissionLine {
@@ -1319,10 +1511,11 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px 8px;
+  padding: var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-small);
-  background: var(--bg-elev);
+  border-radius: var(--radius-dialog);
+  font-size: var(--fs-input-large);
+  color: var(--fg-secondary);
 }
 .subagentHead {
   display: flex;
@@ -1341,7 +1534,7 @@
   border: 0;
   border-radius: var(--radius-row);
   background: none;
-  color: var(--fg);
+  color: var(--fg-secondary);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -1352,8 +1545,8 @@
 .subagentTitle {
   flex: none;
   max-width: 50%;
-  font-weight: 600;
-  color: var(--fg-strong);
+  font-weight: 500;
+  color: var(--fg-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1369,24 +1562,27 @@
 .subagentMeta {
   flex: none;
   margin-left: auto;
-  color: var(--fg-subtle);
-  font-size: var(--fs-small);
+  color: var(--fg-muted);
+  font-size: var(--fs-ui);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .subagentActivity {
   padding-left: 22px;
   color: var(--fg-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-small);
+  font-size: var(--fs-ui);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .subagentSection > summary {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-2) / 2);
+  min-height: var(--h-row);
   padding-left: 22px;
   color: var(--fg-muted);
-  font-size: var(--fs-small);
+  font-size: var(--fs-ui);
   cursor: pointer;
   list-style: none;
 }

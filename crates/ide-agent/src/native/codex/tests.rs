@@ -133,7 +133,7 @@ fn file_changes_carry_diffs() {
         call["content"],
         json!([
             {"type": "diff", "path": "/p/new.txt", "oldText": "", "newText": "hello\n"},
-            {"type": "diff", "path": "/p/a.rs", "oldText": "a\nb\nc\nz\n", "newText": "a\nB\nc\ny\nw\n"},
+            {"type": "diff", "path": "/p/a.rs", "oldText": "a\nb\nc\nz\n", "newText": "a\nB\nc\ny\nw\n", "patch": item["changes"][1]["diff"]},
             {"type": "diff", "path": "/p/old.rs", "oldText": "gone\n", "newText": ""}
         ])
     );

@@ -74,7 +74,7 @@ fn input_content(name: &str, input: &Value) -> Vec<Value> {
     let s = |k: &str| input.get(k).and_then(Value::as_str);
     match name {
         "Edit" => match s("file_path") {
-            Some(p) => vec![diff(p, s("old_string"), s("new_string").unwrap_or_default())],
+            Some(p) => vec![diff(p, s("old_string"), s("new_string").unwrap_or_default(), true)],
             None => Vec::new(),
         },
         "MultiEdit" => {
@@ -84,12 +84,13 @@ fn input_content(name: &str, input: &Value) -> Vec<Value> {
                 .iter()
                 .map(|e| {
                     let field = |k: &str| e.get(k).and_then(Value::as_str);
-                    diff(p, field("old_string"), field("new_string").unwrap_or_default())
+                    diff(p, field("old_string"), field("new_string").unwrap_or_default(), true)
                 })
                 .collect()
         }
         "Write" => match (s("file_path"), s("content")) {
-            (Some(p), Some(c)) => vec![diff(p, None, c)],
+            // The input does not say whether this creates or overwrites a file.
+            (Some(p), Some(c)) => vec![diff(p, None, c, true)],
             _ => Vec::new(),
         },
         "ExitPlanMode" => s("plan").map(|p| vec![text(p)]).unwrap_or_default(),
@@ -112,6 +113,7 @@ pub(super) fn result_fields(name: &str, input: &Value, block: &Value, structured
                     (structured.and_then(|s| s.get("originalFile")).and_then(Value::as_str), content.first_mut())
             {
                 c["oldText"] = json!(old);
+                c.as_object_mut().unwrap().remove("excerpt");
             }
         }
         "Bash" | "PowerShell" => {
@@ -183,8 +185,12 @@ pub(super) fn text(t: &str) -> Value {
     json!({ "type": "content", "content": { "type": "text", "text": t } })
 }
 
-fn diff(path: &str, old: Option<&str>, new: &str) -> Value {
-    json!({ "type": "diff", "path": path, "oldText": old, "newText": new })
+fn diff(path: &str, old: Option<&str>, new: &str, excerpt: bool) -> Value {
+    let mut content = json!({ "type": "diff", "path": path, "oldText": old, "newText": new });
+    if excerpt {
+        content["excerpt"] = json!(true);
+    }
+    content
 }
 
 fn first_line(s: &str) -> String {
@@ -219,7 +225,10 @@ mod tests {
         assert_eq!(edit["title"], "Edit src/a.rs");
         assert_eq!(edit["kind"], "edit");
         assert_eq!(edit["locations"], json!([{"path": "/w/src/a.rs"}]));
-        assert_eq!(edit["content"], json!([{"type": "diff", "path": "/w/src/a.rs", "oldText": "a", "newText": "b"}]));
+        assert_eq!(
+            edit["content"],
+            json!([{"type": "diff", "path": "/w/src/a.rs", "oldText": "a", "newText": "b", "excerpt": true}])
+        );
         let read = call_fields("Read", &json!({"file_path": "/x/b.rs", "offset": 10, "limit": 5}), cwd);
         assert_eq!((read["title"].as_str(), read["kind"].as_str()), (Some("Read /x/b.rs (10 - 14)"), Some("read")));
         assert_eq!(read["locations"], json!([{"path": "/x/b.rs", "line": 10}]));
@@ -233,6 +242,9 @@ mod tests {
     #[test]
     fn results() {
         let input = json!({"file_path": "/w/n.txt", "content": "two"});
+        assert_eq!(input_content("Write", &input)[0]["excerpt"], json!(true));
+        let unknown = result_fields("Write", &input, &json!({"content": "File written"}), None);
+        assert_eq!(unknown["content"][0]["excerpt"], json!(true));
         let r = result_fields(
             "Write",
             &input,

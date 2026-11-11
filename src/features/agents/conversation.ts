@@ -79,14 +79,14 @@ export function pathLink(text: string, cwd: string): PathLink | null {
   return link;
 }
 
-/** `850ms`, `12s`, `1m 05s`, `2h 03m`. */
+/** `850ms`, `12s`, `1m 05s`, `2h 03m 00s`. */
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m ${String(s % 60).padStart(2, "0")}s`;
 }
 
 /** Clock time of a message: `14:03` today, else with the date. */

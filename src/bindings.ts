@@ -127,7 +127,7 @@ export const commands = {
 	/**  Routes frontend logs into the backend `tracing` pipeline. */
 	logFrontend: (level: LogLevel, message: string) => __TAURI_INVOKE<void>("log_frontend", { level, message }),
 	/**  Streams the project's agent events to this window; returns every task. */
-	agentSubscribe: (onEvent: Channel<AgentEvent>) => typedError<AgentTask[], IdeError>(__TAURI_INVOKE("agent_subscribe", { onEvent })),
+	agentSubscribe: (onEvent: Channel<AgentEvent_Deserialize>) => typedError<AgentTask[], IdeError>(__TAURI_INVOKE("agent_subscribe", { onEvent })),
 	agentProviders: () => typedError<AgentProvider[], IdeError>(__TAURI_INVOKE("agent_providers")),
 	/**
 	 *  Overrides built-in agent `id`'s command with `command` (its agent file keeps the
@@ -167,7 +167,7 @@ export const commands = {
 	 */
 	agentCommands: (provider: string, task: string | null) => typedError<AgentCommand[], IdeError>(__TAURI_INVOKE("agent_commands", { provider, task })),
 	/**  Entries of `task`'s conversation, or of its subagent `subagent`'s. */
-	agentEntries: (task: string, subagent: string | null) => typedError<AgentEntry[], IdeError>(__TAURI_INVOKE("agent_entries", { task, subagent })),
+	agentEntries: (task: string, subagent: string | null) => typedError<AgentEntry_Serialize[], IdeError>(__TAURI_INVOKE("agent_entries", { task, subagent })),
 	agentCreate: (request: NewAgentTask) => typedError<AgentTask, IdeError>(__TAURI_INVOKE("agent_create", { request })),
 	/**  Sessions of the project on this machine that no task holds yet, newest first. */
 	agentExternalSessions: () => typedError<ExternalSession[], IdeError>(__TAURI_INVOKE("agent_external_sessions")),
@@ -1714,8 +1714,17 @@ export type AgentCost = {
 	currency: string,
 };
 
+export type AgentDiffPreview = { type: "text"; before: string; after: string } | 
+/**  Replacement strings without an original file offset (for example Claude's Edit). */
+{ type: "snippet"; before: string; after: string } | 
+/**  Unified hunks with their original line numbers; not complete file snapshots. */
+{ type: "patch"; text: string };
+
 /**  One item of a task's conversation. */
-export type AgentEntry = { type: "user"; text: string; 
+export type AgentEntry = AgentEntry_Serialize | AgentEntry_Deserialize;
+
+/**  One item of a task's conversation. */
+export type AgentEntry_Deserialize = ({ type: "user"; text: string; 
 /**  Names of the files and images sent with it. */
 attachments: string[]; 
 /**  The images sent with it, shown in the conversation. */
@@ -1725,13 +1734,15 @@ sentMs?: number | null;
 /**  When the turn it started ended; `None` while it runs or when it was cut off. */
 doneMs?: number | null; 
 /**  Sent into a running turn rather than starting one. */
-steered?: boolean } | { type: "agent"; text: string } | { type: "thought"; text: string } | { type: "tool"; id: string; title: string; 
+steered?: boolean }) & { activity?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; endedMs?: never; error?: never; id?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; startedMs?: never; status?: never; title?: never; tools?: never } | ({ type: "agent"; text: string }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; title?: never; tools?: never } | ({ type: "thought"; text: string }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; title?: never; tools?: never } | ({ type: "tool"; id: string; title: string; 
 /**  ACP tool kind: `read`, `edit`, `execute`, `search`, `fetch`, `think`… */
 kind: string; status: AgentToolStatus; locations: IpcPath[]; 
 /**  Text the tool reported (command output…), truncated. */
-output: string | null; diffs: AgentToolDiff[] } | { type: "plan"; items: AgentPlanItem[] } | 
+output: string | null; 
+/**  The actual invocation, when supplied separately from the human-readable title. */
+command?: AgentToolCommand | null; diffs: AgentToolDiff_Deserialize[] }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; description?: never; doneMs?: never; endedMs?: never; error?: never; images?: never; incoming?: never; items?: never; message?: never; options?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; steered?: never; text?: never; tools?: never } | ({ type: "plan"; items: AgentPlanItem[] }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; incoming?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; text?: never; title?: never; tools?: never } | 
 /**  A subagent the agent started: its own session, whose entries are listed separately. */
-{ type: "subagent"; 
+({ type: "subagent"; 
 /**  The subagent's session id. */
 id: string; title: string | null; description: string | null; status: AgentSubagentStatus; error: string | null; 
 /**  What it was asked to do, last. */
@@ -1745,34 +1756,99 @@ activity: string | null; startedMs: number | null;
 /**  When it last stopped working; `None` while it works. */
 endedMs: number | null; 
 /**  Whether it can be stopped on its own. */
-cancellable: boolean } | 
+cancellable: boolean }) & { attachments?: never; chosen?: never; command?: never; diffs?: never; doneMs?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; questions?: never; sentMs?: never; steered?: never; text?: never } | 
 /**  A message between sessions in a subagent's conversation: its task (`incoming`) or its report. */
-{ type: "message"; incoming: boolean; text: string } | { type: "permission"; id: number; title: string; options: AgentPermissionOption[]; 
+({ type: "message"; incoming: boolean; text: string }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; title?: never; tools?: never } | ({ type: "permission"; id: number; title: string; options: AgentPermissionOption[]; 
 /**
  *  Set when the request asks `AskUserQuestion`'s questions; answered with a JSON object
  *  of question to answer instead of an option.
  */
 questions?: AgentQuestion[]; 
 /**  Name of the chosen option, or `None` while pending. Cancelled requests read "Cancelled". */
-chosen: string | null } | { type: "error"; message: string };
+chosen: string | null }) & { activity?: never; attachments?: never; cancellable?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; output?: never; prompt?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; text?: never; tools?: never } | ({ type: "error"; message: string }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; text?: never; title?: never; tools?: never };
+
+/**  One item of a task's conversation. */
+export type AgentEntry_Serialize = ({ type: "user"; text: string; 
+/**  Names of the files and images sent with it. */
+attachments: string[]; 
+/**  The images sent with it, shown in the conversation. */
+images: AgentImage[]; 
+/**  When it was sent (ms since the epoch); `None` in tasks saved before this was kept. */
+sentMs: number | null; 
+/**  When the turn it started ended; `None` while it runs or when it was cut off. */
+doneMs: number | null; 
+/**  Sent into a running turn rather than starting one. */
+steered: boolean }) & { activity?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; endedMs?: never; error?: never; id?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; startedMs?: never; status?: never; title?: never; tools?: never } | ({ type: "agent"; text: string }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; title?: never; tools?: never } | ({ type: "thought"; text: string }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; title?: never; tools?: never } | ({ type: "tool"; id: string; title: string; 
+/**  ACP tool kind: `read`, `edit`, `execute`, `search`, `fetch`, `think`… */
+kind: string; status: AgentToolStatus; locations: IpcPath[]; 
+/**  Text the tool reported (command output…), truncated. */
+output: string | null; 
+/**  The actual invocation, when supplied separately from the human-readable title. */
+command?: AgentToolCommand | null; diffs: AgentToolDiff_Serialize[] }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; description?: never; doneMs?: never; endedMs?: never; error?: never; images?: never; incoming?: never; items?: never; message?: never; options?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; steered?: never; text?: never; tools?: never } | ({ type: "plan"; items: AgentPlanItem[] }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; incoming?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; text?: never; title?: never; tools?: never } | 
+/**  A subagent the agent started: its own session, whose entries are listed separately. */
+({ type: "subagent"; 
+/**  The subagent's session id. */
+id: string; title: string | null; description: string | null; status: AgentSubagentStatus; error: string | null; 
+/**  What it was asked to do, last. */
+prompt: string | null; 
+/**  Its answer. */
+reply: string | null; 
+/**  Tool calls it made. */
+tools: number; 
+/**  Title of its latest tool call. */
+activity: string | null; startedMs: number | null; 
+/**  When it last stopped working; `None` while it works. */
+endedMs: number | null; 
+/**  Whether it can be stopped on its own. */
+cancellable: boolean }) & { attachments?: never; chosen?: never; command?: never; diffs?: never; doneMs?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; questions?: never; sentMs?: never; steered?: never; text?: never } | 
+/**  A message between sessions in a subagent's conversation: its task (`incoming`) or its report. */
+({ type: "message"; incoming: boolean; text: string }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; items?: never; kind?: never; locations?: never; message?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; title?: never; tools?: never } | ({ type: "permission"; id: number; title: string; options: AgentPermissionOption[]; 
+/**
+ *  Set when the request asks `AskUserQuestion`'s questions; answered with a JSON object
+ *  of question to answer instead of an option.
+ */
+questions: AgentQuestion[]; 
+/**  Name of the chosen option, or `None` while pending. Cancelled requests read "Cancelled". */
+chosen: string | null }) & { activity?: never; attachments?: never; cancellable?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; message?: never; output?: never; prompt?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; text?: never; tools?: never } | ({ type: "error"; message: string }) & { activity?: never; attachments?: never; cancellable?: never; chosen?: never; command?: never; description?: never; diffs?: never; doneMs?: never; endedMs?: never; error?: never; id?: never; images?: never; incoming?: never; items?: never; kind?: never; locations?: never; options?: never; output?: never; prompt?: never; questions?: never; reply?: never; sentMs?: never; startedMs?: never; status?: never; steered?: never; text?: never; title?: never; tools?: never };
 
 /**  Streamed to the window that subscribed (`AgentManager::subscribe`). */
-export type AgentEvent = 
+export type AgentEvent = AgentEvent_Serialize | AgentEvent_Deserialize;
+
+/**  Streamed to the window that subscribed (`AgentManager::subscribe`). */
+export type AgentEvent_Deserialize = 
 /**  A task was created or its metadata changed. */
-{ type: "task"; task: AgentTask } | { type: "removed"; id: string } | 
+({ type: "task"; task: AgentTask }) & { entry?: never; from?: never; id?: never; index?: never; length?: never; limits?: never; provider?: never; subagent?: never; text?: never } | ({ type: "removed"; id: string }) & { entry?: never; from?: never; index?: never; length?: never; limits?: never; provider?: never; subagent?: never; task?: never; text?: never } | 
 /**  The task's conversation was cut to its first `length` entries (turns rolled back). */
-{ type: "truncated"; task: string; length: number } | 
+({ type: "truncated"; task: string; length: number }) & { entry?: never; from?: never; id?: never; index?: never; limits?: never; provider?: never; subagent?: never; text?: never } | 
 /**  Entry `index` of `task` (of its subagent `subagent`) was added or replaced. */
-{ type: "entry"; task: string; subagent: string | null; index: number; entry: AgentEntry } | 
+({ type: "entry"; task: string; subagent: string | null; index: number; entry: AgentEntry_Deserialize }) & { from?: never; id?: never; length?: never; limits?: never; provider?: never; text?: never } | 
 /**
  *  Text was appended to entry `index` (an agent message or a thought): it read the first
  *  `from` UTF-16 units of its text when the previous event for it was sent.
  */
-{ type: "append"; task: string; subagent: string | null; index: number; from: number; text: string } | 
+({ type: "append"; task: string; subagent: string | null; index: number; from: number; text: string }) & { entry?: never; id?: never; length?: never; limits?: never; provider?: never } | 
 /**  An agent reported the usage limits of its account (shared by every task of `provider`). */
-{ type: "limits"; provider: string; limits: AgentLimit[] } | 
+({ type: "limits"; provider: string; limits: AgentLimit[] }) & { entry?: never; from?: never; id?: never; index?: never; length?: never; subagent?: never; task?: never; text?: never } | 
 /**  The installed or configured agent providers changed. */
-{ type: "providers" };
+({ type: "providers" }) & { entry?: never; from?: never; id?: never; index?: never; length?: never; limits?: never; provider?: never; subagent?: never; task?: never; text?: never };
+
+/**  Streamed to the window that subscribed (`AgentManager::subscribe`). */
+export type AgentEvent_Serialize = 
+/**  A task was created or its metadata changed. */
+({ type: "task"; task: AgentTask }) & { entry?: never; from?: never; id?: never; index?: never; length?: never; limits?: never; provider?: never; subagent?: never; text?: never } | ({ type: "removed"; id: string }) & { entry?: never; from?: never; index?: never; length?: never; limits?: never; provider?: never; subagent?: never; task?: never; text?: never } | 
+/**  The task's conversation was cut to its first `length` entries (turns rolled back). */
+({ type: "truncated"; task: string; length: number }) & { entry?: never; from?: never; id?: never; index?: never; limits?: never; provider?: never; subagent?: never; text?: never } | 
+/**  Entry `index` of `task` (of its subagent `subagent`) was added or replaced. */
+({ type: "entry"; task: string; subagent: string | null; index: number; entry: AgentEntry_Serialize }) & { from?: never; id?: never; length?: never; limits?: never; provider?: never; text?: never } | 
+/**
+ *  Text was appended to entry `index` (an agent message or a thought): it read the first
+ *  `from` UTF-16 units of its text when the previous event for it was sent.
+ */
+({ type: "append"; task: string; subagent: string | null; index: number; from: number; text: string }) & { entry?: never; id?: never; length?: never; limits?: never; provider?: never } | 
+/**  An agent reported the usage limits of its account (shared by every task of `provider`). */
+({ type: "limits"; provider: string; limits: AgentLimit[] }) & { entry?: never; from?: never; id?: never; index?: never; length?: never; subagent?: never; task?: never; text?: never } | 
+/**  The installed or configured agent providers changed. */
+({ type: "providers" }) & { entry?: never; from?: never; id?: never; index?: never; length?: never; limits?: never; provider?: never; subagent?: never; task?: never; text?: never };
 
 export type AgentImage = {
 	mimeType: string,
@@ -2066,10 +2142,27 @@ export type AgentTask = {
 	background?: AgentBackgroundTask[],
 };
 
-export type AgentToolDiff = {
+export type AgentToolCommand = {
+	text: string,
+	cwd: IpcPath | null,
+};
+
+export type AgentToolDiff = AgentToolDiff_Serialize | AgentToolDiff_Deserialize;
+
+export type AgentToolDiff_Deserialize = {
 	path: IpcPath,
 	added: number,
 	removed: number,
+	/**  The provider's before/after text for this call, not the current working copy. */
+	preview?: AgentDiffPreview | null,
+};
+
+export type AgentToolDiff_Serialize = {
+	path: IpcPath,
+	added: number,
+	removed: number,
+	/**  The provider's before/after text for this call, not the current working copy. */
+	preview?: AgentDiffPreview | null,
 };
 
 export type AgentToolStatus = "pending" | "running" | "completed" | "failed";

@@ -1069,6 +1069,7 @@ export function CommitMessageField({ included, runner }: { included: number; run
         value={message}
         placeholder={tx("Commit Message")}
         aria-label={tx("Commit message")}
+        data-autofocus
         spellCheck
         onChange={(e) => {
           const el = e.target;

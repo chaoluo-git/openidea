@@ -527,7 +527,11 @@ fn file_diff(change: &Value) -> Option<Value> {
             (change.pointer("/kind/move_path").and_then(Value::as_str).unwrap_or(path), old, new)
         }
     };
-    Some(json!({ "type": "diff", "path": path, "oldText": old, "newText": new }))
+    let mut content = json!({ "type": "diff", "path": path, "oldText": old, "newText": new });
+    if !matches!(change.pointer("/kind/type").and_then(Value::as_str), Some("add" | "delete")) {
+        content["patch"] = json!(diff);
+    }
+    Some(content)
 }
 
 /// The old and new text a unified diff's hunks cover (context included).
