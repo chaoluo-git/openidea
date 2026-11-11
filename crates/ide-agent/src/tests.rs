@@ -2572,6 +2572,12 @@ async fn editing_without_native_rewind_restarts_with_only_retained_context() {
     assert_eq!(removed.text, "again");
     assert_eq!(mgr.entries(&task.id, None).unwrap(), original[..cut]);
     assert!(mgr.task(&task.id).unwrap().state.lock().session_id.is_none());
+    let copy = mgr.fork(&task.id, None).await.unwrap();
+    assert_eq!(mgr.task(&copy.id).unwrap().state.lock().context_before, Some(cut));
+    mgr.prompt(&copy.id, text("forked edit"), false).await.unwrap();
+    wait_for(&mgr, &copy.id, AgentStatus::Ready).await;
+    assert!(agent.prompts.lock().last().unwrap()[0]["text"].as_str().unwrap().contains("second turn"));
+    assert_eq!(mgr.task(&task.id).unwrap().state.lock().context_before, Some(cut));
     mgr.shutdown();
 
     let restored = manager(tmp.path(), agent.clone());

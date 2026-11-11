@@ -793,6 +793,7 @@ impl AgentManager {
             if let Some(&cut) = turn_starts(&entries).get(keep as usize) {
                 entries.truncate(cut);
             }
+            let context_before = s.context_before.map(|end| end.min(entries.len()));
             let now = now_ms();
             let task = AgentTask {
                 id: uuid::Uuid::new_v4().simple().to_string(),
@@ -815,7 +816,7 @@ impl AgentManager {
                 before: (*s.before).clone(),
                 subagents: s.conversation.saved_subagents(),
                 pending_rollback: total - keep,
-                context_before: None,
+                context_before,
                 title_renamed: s.title_renamed,
             }
         };
