@@ -91,6 +91,11 @@ function renderHtml(text: string): string {
     scroll.className = styles.tableScroll!;
     const card = document.createElement("div");
     card.className = styles.tableCard!;
+    const columns = Math.max(
+      0,
+      ...[...table.rows].map((row) => [...row.cells].reduce((n, cell) => n + cell.colSpan, 0)),
+    );
+    if (columns >= 5) card.classList.add(styles.denseTable!);
     table.replaceWith(card);
     card.appendChild(scroll);
     scroll.appendChild(table);

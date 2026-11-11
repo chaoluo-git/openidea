@@ -116,7 +116,106 @@ const SQL_REPLY = [
   "```",
 ].join("\n");
 
-test("fills the conversation with table and code cards", async ({ page }, info) => {
+const POD_REPLY = [
+  "## Pods",
+  "",
+  "Current **context:** `example-cluster`. All workloads are ready.",
+  "",
+  "| Name | Namespace | Ready | Status | Restarts | Age | Node | IP |",
+  "| --- | --- | --- | --- | --- | --- | --- | --- |",
+  ...Array.from(
+    { length: 6 },
+    (_, i) =>
+      `| api-server-prod-7466b8b584-${i} | workspace-dashboard-prod | 2/2 | Running | 0 | 13h9m | worker-services-c931c.cluster.example.net | 192.0.2.${i + 10} |`,
+  ),
+].join("\n");
+
+for (const theme of ["light", "dark"] as const) {
+  test(`adapts table width and density while preserving the reading column in ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width: 2200, height: 1000 });
+    const reply = await openReply(
+      page,
+      "Summary:\n\n| Metric | Before | After |\n| --- | --- | --- |\n| CPU | 3 cores | 0.1 cores |",
+      undefined,
+      theme,
+    );
+    await page.evaluate(async (id) => {
+      const path = "/src/features/agents/store.ts";
+      const store = await import(path);
+      store.openTaskInEditorLocation(id);
+    }, TASK.id);
+    await expect
+      .poll(() => reply.getByRole("region", { name: "Table" }).evaluate((frame) => frame.clientWidth))
+      .toBeGreaterThan(1000);
+    const simpleSize = px(await css(reply, "table", "font-size"));
+    await page.evaluate(
+      async ({ id, text }) => {
+        const path = "/src/features/agents/store.ts";
+        const store = await import(path);
+        const entries = store.useAgents.getState().entries.get(id)!;
+        store.useAgents.setState({ entries: new Map([[id, [entries[0], { type: "agent", text }]]]) });
+      },
+      { id: TASK.id, text: POD_REPLY },
+    );
+    await expect(reply.locator("th")).toHaveCount(8);
+    const geometry = await reply.evaluate((root) => {
+      const px = (value: string) => Number.parseFloat(value);
+      const row = root.closest("[class*='_conversationRow_']")!;
+      const stream = row.parentElement!;
+      const pad = getComputedStyle(stream);
+      const table = root.querySelector("table")!;
+      const card = table.parentElement!.parentElement!;
+      const prose = root.querySelector("p")!;
+      const pr = prose.getBoundingClientRect();
+      return {
+        table: card.getBoundingClientRect().width,
+        available: stream.clientWidth - px(pad.paddingLeft) - px(pad.paddingRight),
+        tableLeft: card.getBoundingClientRect().left,
+        expectedLeft: stream.getBoundingClientRect().left + px(pad.paddingLeft),
+        prose: pr.width,
+        proseLeft: pr.left,
+        authorLeft: row.querySelector("[class*='_agentAuthor_']")!.getBoundingClientRect().left,
+        footerLeft: row.querySelector("[class*='_messageFooter_']")!.getBoundingClientRect().left,
+        font: px(getComputedStyle(table).fontSize),
+        bodyFont: px(getComputedStyle(root).fontSize),
+        bodyColor: getComputedStyle(root).color,
+        tableColor: getComputedStyle(table).color,
+      };
+    });
+    expect(Math.abs(geometry.table - geometry.available)).toBeLessThan(2);
+    expect(Math.abs(geometry.tableLeft - geometry.expectedLeft)).toBeLessThan(2);
+    expect(geometry.table).toBeGreaterThan(geometry.prose * 1.3);
+    expect(Math.abs(geometry.authorLeft - geometry.proseLeft)).toBeLessThan(2);
+    expect(Math.abs(geometry.footerLeft - geometry.proseLeft)).toBeLessThan(2);
+    expect(geometry.font).toBeLessThan(simpleSize);
+    expect(geometry.font).toBeLessThan(geometry.bodyFont);
+    expect(geometry.font).toBeGreaterThanOrEqual(12);
+    if (theme === "light") {
+      expect(geometry.bodyColor).toBe("rgb(51, 51, 51)");
+      expect(geometry.tableColor).not.toBe(geometry.bodyColor);
+    }
+    await expect(reply.locator("strong")).toHaveCSS("font-weight", "600");
+    await page.screenshot({ path: info.outputPath(`adaptive-tables-${theme}.png`), animations: "disabled" });
+    await page.setViewportSize({ width: 900, height: 1000 });
+    await expect.poll(async () => px(await css(reply, "table", "font-size"))).toBeLessThan(geometry.font);
+    const narrow = await reply.evaluate((root) => {
+      const frame = root.querySelector("table")!.parentElement!;
+      return {
+        visible: frame.clientWidth,
+        content: frame.scrollWidth,
+        page: document.documentElement.clientWidth,
+        pageContent: document.documentElement.scrollWidth,
+        font: Number.parseFloat(getComputedStyle(root.querySelector("table")!).fontSize),
+      };
+    });
+    expect(narrow.content).toBeGreaterThan(narrow.visible);
+    expect(narrow.pageContent).toBeLessThanOrEqual(narrow.page);
+    expect(narrow.font).toBeGreaterThanOrEqual(12);
+    await expect(reply.getByRole("button", { name: "Copy Table" })).toBeVisible();
+  });
+}
+
+test("expands tables while keeping prose and code in the reading column", async ({ page }, info) => {
   await page.setViewportSize({ width: 1500, height: 1000 });
   const reply = await openReply(page, SQL_REPLY, undefined, "light");
   await page.evaluate(async (id) => {
@@ -129,9 +228,25 @@ test("fills the conversation with table and code cards", async ({ page }, info) 
     column: root.closest("[class*='_agentMessage_']")!.getBoundingClientRect().width,
     table: root.querySelector("table")!.getBoundingClientRect().width,
     code: root.querySelector("pre")!.getBoundingClientRect().width,
+    prose: root.querySelector("p")!.getBoundingClientRect().width,
   }));
   expect(Math.abs(sizes.column - sizes.table)).toBeLessThan(3);
-  expect(Math.abs(sizes.column - sizes.code)).toBeLessThan(3);
+  expect(Math.abs(sizes.prose - sizes.code)).toBeLessThan(3);
+  expect(sizes.table).toBeGreaterThan(sizes.prose + 50);
+});
+
+test("preserves a raw image's requested size when a table expands the reply", async ({ page }) => {
+  await page.setViewportSize({ width: 2200, height: 1000 });
+  const reply = await openReply(
+    page,
+    `Summary:\n\n<img src="${PIXEL}" width="40" height="40">\n\n| A | B |\n| --- | --- |\n| one | two |`,
+  );
+  await page.evaluate(async (id) => {
+    const path = "/src/features/agents/store.ts";
+    const store = await import(path);
+    store.openTaskInEditorLocation(id);
+  }, TASK.id);
+  await expect(reply.locator("img")).toHaveCSS("width", "40px");
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -161,7 +276,7 @@ for (const theme of ["light", "dark"] as const) {
     const sizes = await page.evaluate(() => {
       const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
       const body = document.querySelector("[class*='_agentCard_']")!;
-      const column = body.closest("[class*='_agentMessage_']")!.getBoundingClientRect();
+      const column = body.querySelector("p")!.getBoundingClientRect();
       const panel = body.closest("[class*='_conversation_']")!.getBoundingClientRect();
       return {
         body: getComputedStyle(body).fontSize,
@@ -271,7 +386,7 @@ test("keeps SQL controls visible, wraps long code and copies the original source
 test("styles tables so a reply reads as a table", async ({ page }) => {
   const reply = await openReply(page, REPLY);
   expect(await css(reply, "table", "display")).toBe("table");
-  expect(await css(reply, "td", "padding-left")).toBe("24px");
+  expect(await css(reply, "td", "padding-left")).toBe("12px");
   expect(await css(reply, "th", "border-bottom-width")).toBe("0px");
   expect(await css(reply, "th", "font-weight")).toBe("400");
   const frame = reply.getByRole("region", { name: "Table" });
@@ -315,7 +430,7 @@ test("scrolls a wide table inside the reply", async ({ page }) => {
 
 test("sizes headings for a chat and keeps small ones readable", async ({ page }) => {
   const reply = await openReply(page, REPLY);
-  const body = px(await css(reply, "td", "font-size"));
+  const body = px(await reply.evaluate((root) => getComputedStyle(root).fontSize));
   const h1 = px(await css(reply, "h1", "font-size"));
   expect(h1).toBeGreaterThan(body);
   expect(h1).toBeLessThanOrEqual(body * 1.2);

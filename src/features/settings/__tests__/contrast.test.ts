@@ -94,7 +94,7 @@ describe("theme tokens", () => {
     expect(
       failures(
         light,
-        ["--agent-code-keyword", "--agent-code-string", "--agent-code-comment"],
+        ["--agent-fg", "--agent-code-keyword", "--agent-code-string", "--agent-code-comment"],
         ["--bg-app", "--bg-hover"],
         4.5,
       ),

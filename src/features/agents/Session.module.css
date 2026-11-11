@@ -120,6 +120,20 @@
   min-width: 0;
   contain-intrinsic-size: auto 120px;
 }
+/* Tables use the panel's width; prose and message controls keep their reading column. */
+.conversationRow:has(> .agentMessage .tableCard) {
+  width: 100%;
+}
+.conversationRow:has(> .agentMessage .tableCard) > .agentAuthor,
+.conversationRow:has(> .agentMessage .tableCard) > .agentMessage > .messageFooter {
+  width: min(100%, var(--session-content-width));
+  margin-inline: auto;
+}
+.conversationRow:has(> .agentMessage .tableCard) .markdown > :not(.tableCard) {
+  max-width: min(100%, var(--session-content-width));
+  margin-inline: auto;
+  box-sizing: border-box;
+}
 /* Laid out once, an off-screen row skips rendering at its remembered size (`useOffscreenRows`). */
 .conversationRow[data-measured] {
   content-visibility: auto;
@@ -243,6 +257,7 @@
   overflow-wrap: anywhere;
   font-size: var(--fs-input-large);
   line-height: 1.6;
+  color: var(--agent-fg);
 }
 .agentCard:has(.tableCard, .codeBlock, :global([data-mermaid])),
 .reply:has(.tableCard, .codeBlock, :global([data-mermaid])) {
@@ -347,7 +362,7 @@
   padding: 6px 10px;
   border-radius: var(--radius-tab);
   background: var(--bg-hover);
-  color: var(--fg);
+  color: var(--agent-fg);
   font-size: var(--fs-input-large);
   line-height: 1.6;
   white-space: pre-wrap;
@@ -362,7 +377,7 @@
   font: inherit;
   font-size: var(--fs-input-large);
   line-height: 1.6;
-  color: var(--fg-strong);
+  color: var(--agent-fg);
   background: var(--bg-input);
   border: 1px solid var(--accent);
   border-radius: var(--radius-control);
@@ -551,11 +566,16 @@
   color: var(--link);
 }
 .tableCard {
+  container: agent-table / inline-size;
   position: relative;
   min-width: 0;
   margin: 0 0 var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-popup-large);
+}
+.denseTable {
+  --agent-table-cell-block: var(--space-3);
+  --agent-table-cell-inline: var(--space-4);
 }
 .tableScroll {
   max-width: 100%;
@@ -586,19 +606,25 @@
   border-collapse: separate;
   border-spacing: 0;
   font-variant-numeric: tabular-nums;
+  font-size: var(--agent-table-font-size, calc(var(--fs-input-large) - 1px));
+  color: var(--fg-secondary);
+}
+.denseTable :global(table) {
+  font-size: clamp(var(--fs-small), calc(var(--fs-small) + 0.15cqi), var(--fs-ui));
+  line-height: 1.55;
 }
 .markdown :global(th),
 .markdown :global(td) {
   /* Let wide tables scroll rather than breaking identifiers into fragments. */
   min-width: 6em;
-  padding: var(--space-4) 24px;
+  padding: var(--agent-table-cell-block, var(--space-4)) var(--agent-table-cell-inline, 24px);
   border: 0;
   vertical-align: top;
   overflow-wrap: normal;
   word-break: normal;
 }
 .markdown :global(th) {
-  color: var(--fg-secondary);
+  color: var(--fg-muted);
   font-weight: 400;
   text-align: left;
 }
@@ -617,8 +643,19 @@
   text-align: right;
 }
 .markdown :global(td code) {
+  font-size: inherit;
   white-space: normal;
   overflow-wrap: normal;
+}
+@container agent-table (max-width: 640px) {
+  .tableScroll {
+    --agent-table-font-size: var(--fs-ui);
+    --agent-table-cell-block: var(--space-3);
+    --agent-table-cell-inline: var(--space-3);
+  }
+}
+.markdown :global(strong) {
+  font-weight: 600;
 }
 .markdown :global(h1),
 .markdown :global(h2),
@@ -627,7 +664,8 @@
 .markdown :global(h5),
 .markdown :global(h6) {
   margin: 12px 0 6px;
-  color: var(--fg-strong);
+  color: var(--agent-fg);
+  font-weight: 600;
   font-size: 1em;
   line-height: 1.3;
 }
