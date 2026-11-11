@@ -148,7 +148,7 @@ for (const theme of ["light", "dark"] as const) {
         const frame = root.querySelector("table")!.parentElement!;
         return {
           column: root.closest("[class*='_agentMessage_']")!.getBoundingClientRect().width,
-          frame: frame.getBoundingClientRect().width,
+          frame: frame.parentElement!.getBoundingClientRect().width,
           row: root.querySelector("tr")!.getBoundingClientRect().width,
           visible: frame.clientWidth,
           page: document.documentElement.clientWidth,
@@ -204,16 +204,36 @@ test("keeps SQL controls visible, wraps long code and copies the original source
 test("styles tables so a reply reads as a table", async ({ page }) => {
   const reply = await openReply(page, REPLY);
   expect(await css(reply, "table", "display")).toBe("table");
-  expect(await css(reply, "td", "padding-left")).toBe("16px");
-  expect(await css(reply, "th", "border-bottom-width")).toBe("1px");
+  expect(await css(reply, "td", "padding-left")).toBe("24px");
+  expect(await css(reply, "th", "border-bottom-width")).toBe("0px");
+  expect(await css(reply, "th", "font-weight")).toBe("400");
   const frame = reply.getByRole("region", { name: "Table" });
-  await expect(frame).toHaveCSS("border-top-width", "1px");
+  await expect(frame.locator("..")).toHaveCSS("border-top-width", "1px");
   expect(px(await frame.evaluate((el) => getComputedStyle(el).borderRadius))).toBeGreaterThan(0);
   // A narrow chat must not squeeze a column to a few letters.
   const widths = await reply
     .locator("td")
     .evaluateAll((cells) => cells.map((cell) => cell.getBoundingClientRect().width));
   for (const width of widths) expect(width).toBeGreaterThanOrEqual(70);
+});
+
+test("copies a whole table while its copy button stays visible after horizontal scrolling", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.setViewportSize({ width: 760, height: 1000 });
+  const reply = await openReply(page, REPLY);
+  const frame = reply.getByRole("region", { name: "Table" });
+  await frame.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  const copy = reply.getByRole("button", { name: "Copy Table" });
+  await expect(copy).toBeVisible();
+  await copy.click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "Path\tOwner\tStatus\tNotes\nsrc/features/agents/conversation/very/long/path/file.tsx\tsomeone\tmodified\ta fairly long note",
+  );
 });
 
 test("scrolls a wide table inside the reply", async ({ page }) => {
@@ -555,3 +575,71 @@ for (const theme of ["dark", "light"] as const) {
     for (const { text, ratio } of contrasts) expect(ratio, `${theme}: ${text}`).toBeGreaterThanOrEqual(4.5);
   });
 }
+
+test("edits an earlier Copilot message with a visible restart confirmation", async ({ page }, info) => {
+  await openReply(page, "Earlier answer");
+  await page.evaluate(async (id) => {
+    const storePath = "/src/features/agents/store.ts";
+    const routePath = "/src/platform/tauriCore.ts";
+    const store = await import(storePath);
+    const { setInvokeRoute } = await import(routePath);
+    const task = store.useAgents.getState().tasks.get(id)!;
+    const before = store.useAgents.getState().entries.get(id)!;
+    store.useAgents.setState({
+      tasks: new Map([[id, { ...task, provider: "copilot", capabilities: { ...task.capabilities, rollback: false } }]]),
+      entries: new Map([
+        [
+          id,
+          [
+            ...before,
+            { type: "user", text: "Original follow up", attachments: [], steered: false },
+            { type: "agent", text: "Reply to replace" },
+          ],
+        ],
+      ]),
+    });
+    setInvokeRoute((cmd, args) => {
+      if (cmd === "agent_rollback") {
+        if ((args as { turns: number }).turns !== 1) return Promise.reject(new Error("Wrong turn"));
+        store.useAgents.setState({ entries: new Map([[id, before]]) });
+        return Promise.resolve(null);
+      }
+      if (cmd === "agent_prompt") {
+        const text = (args as { prompt: { text: string } }).prompt.text;
+        store.useAgents.setState({
+          entries: new Map([
+            [
+              id,
+              [
+                ...before,
+                { type: "user", text, attachments: [], steered: false },
+                { type: "agent", text: "Regenerated answer" },
+              ],
+            ],
+          ]),
+        });
+        return Promise.resolve(null);
+      }
+      return null;
+    });
+  }, TASK.id);
+  await page.getByRole("button", { name: "Edit & Rerun", exact: true }).nth(1).click();
+  const edit = page.getByRole("textbox", { name: "Message", exact: true }).first();
+  await expect(edit).toHaveValue("Original follow up");
+  await edit.fill("Updated follow up");
+  await page.getByRole("button", { name: "Send", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Restart With Earlier Messages" });
+  await expect(dialog).toContainText("This agent cannot rewind.");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(edit).toHaveValue("Updated follow up");
+  await page.getByRole("button", { name: "Send", exact: true }).first().click();
+  await page
+    .getByRole("dialog", { name: "Restart With Earlier Messages" })
+    .getByRole("button", { name: "Edit & Rerun", exact: true })
+    .click();
+  await expect(page.getByText("Regenerated answer", { exact: true })).toBeVisible();
+  await expect(page.getByText("Original follow up", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Reply to replace", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Earlier answer", { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("copilot-edited.png") });
+});

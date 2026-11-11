@@ -52,6 +52,33 @@ beforeEach(() => {
 afterEach(clearMocks);
 afterEach(() => disposeActions());
 
+it("copies table cells as tab-separated data without its controls, including after streaming", async () => {
+  const text = "| Name | Value |\n| --- | --- |\n| **CPU** | `3 cores` |";
+  const { rerender } = render(
+    <StrictMode>
+      <Markdown text={text} cwd="/repo" />
+    </StrictMode>,
+  );
+  expect(screen.getAllByRole("button", { name: "Copy Table" })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Copy Table" }));
+  await waitFor(() => expect(copyText).toHaveBeenCalledWith("Name\tValue\nCPU\t3 cores"));
+  rerender(
+    <StrictMode>
+      <Markdown text={`${text}\n| Memory | 7 GiB |`} cwd="/repo" />
+    </StrictMode>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Copy Table" }));
+  await waitFor(() => expect(copyText).toHaveBeenLastCalledWith("Name\tValue\nCPU\t3 cores\nMemory\t7 GiB"));
+});
+
+it("reports table copy failure without showing a successful state", async () => {
+  copyText.mockRejectedValueOnce(new Error("Clipboard denied"));
+  render(<Markdown text={"| Name |\n| --- |\n| CPU |"} cwd="/repo" />);
+  fireEvent.click(screen.getByRole("button", { name: "Copy Table" }));
+  await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.objectContaining({ title: "Couldn't copy table" })));
+  expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
+});
+
 it("keeps one copy control outside each code block when effects restart", () => {
   const { container } = render(
     <StrictMode>

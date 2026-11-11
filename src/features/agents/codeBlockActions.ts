@@ -11,6 +11,17 @@ export interface WrapCode {
   toggle: () => void;
 }
 
+async function copyText(arg: unknown, title: string) {
+  const target = arg as CopyCode | undefined;
+  if (!target || typeof target.text !== "string") return;
+  try {
+    await writeClipboardText(target.text);
+    target.onCopied?.();
+  } catch (error) {
+    notifications().notify({ level: "error", title, body: String(error) });
+  }
+}
+
 export const codeBlockActions: Action[] = [
   {
     id: "agents.copyCode",
@@ -18,16 +29,15 @@ export const codeBlockActions: Action[] = [
     category: "Agents",
     icon: "copy",
     hidden: true,
-    run: async ({ arg }) => {
-      const code = arg as CopyCode | undefined;
-      if (!code || typeof code.text !== "string") return;
-      try {
-        await writeClipboardText(code.text);
-        code.onCopied?.();
-      } catch (error) {
-        notifications().notify({ level: "error", title: "Couldn't copy code", body: String(error) });
-      }
-    },
+    run: ({ arg }) => copyText(arg, "Couldn't copy code"),
+  },
+  {
+    id: "agents.copyTable",
+    title: "Copy Table",
+    category: "Agents",
+    icon: "copy",
+    hidden: true,
+    run: ({ arg }) => copyText(arg, "Couldn't copy table"),
   },
   {
     id: "agents.toggleCodeWrap",

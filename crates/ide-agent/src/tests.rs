@@ -34,6 +34,8 @@ struct FakeAgent {
     permission_replies: Mutex<Vec<Value>>,
     /// Without `loadSession` (a session lives only as long as its process).
     no_load: bool,
+    no_rollback: bool,
+    prompts: Mutex<Vec<Value>>,
     auth_on_new: bool,
     request_error: Option<(i64, String)>,
     auth_methods: Vec<Value>,
@@ -150,7 +152,7 @@ impl Handler for FakeAgent {
                 }
                 Ok(
                     json!({"protocolVersion": 1, "authMethods": self.auth_methods, "agentCapabilities": {"loadSession": !self.no_load,
-                    "sessionCapabilities": {"fork": {}}, "_meta": {"openidea": {"rollback": true, "steer": true, "backgroundTasks": true}}}}),
+                    "sessionCapabilities": {"fork": {}}, "_meta": {"openidea": {"rollback": !self.no_rollback, "steer": true, "backgroundTasks": true}}}}),
                 )
             }
             "session/new" => {
@@ -184,6 +186,18 @@ impl Handler for FakeAgent {
                 Ok(json!({}))
             }
             "session/prompt" => {
+                self.prompts.lock().push(params["prompt"].clone());
+                if params
+                    .pointer("/prompt/0/text")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| s.starts_with("Earlier conversation"))
+                {
+                    if params.pointer("/prompt/1/text") == Some(&json!("fail context")) {
+                        return Err((codes::INTERNAL_ERROR, "Context failed".into()));
+                    }
+                    self.say(&session, "Read the earlier context");
+                    return Ok(json!({"stopReason": "end_turn"}));
+                }
                 let text = params.pointer("/prompt/0/text").and_then(Value::as_str).unwrap_or_default().to_owned();
                 if text == "again" {
                     self.say(&session, "second turn");
@@ -2531,4 +2545,53 @@ async fn session_settings_win_over_discovery_in_memory_and_on_disk() {
             assert_eq!(mgr.shared.known.lock()["claude"].thought_levels["saved"], saved[1..]);
         }
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn editing_without_native_rewind_restarts_with_only_retained_context() {
+    let tmp = tempfile::tempdir().unwrap();
+    let agent = Arc::new(FakeAgent { no_rollback: true, ..Default::default() });
+    let mgr = manager(tmp.path(), agent.clone());
+    let task = mgr
+        .create(NewAgentTask {
+            project_root: None,
+            provider: "claude".into(),
+            prompt: text("again"),
+            isolation: Isolation::Local,
+            config: vec![],
+            base: None,
+        })
+        .await
+        .unwrap();
+    wait_for(&mgr, &task.id, AgentStatus::Ready).await;
+    mgr.prompt(&task.id, text("again"), false).await.unwrap();
+    wait_for(&mgr, &task.id, AgentStatus::Ready).await;
+    let original = mgr.entries(&task.id, None).unwrap();
+    let cut = turn_starts(&original)[1];
+    let removed = mgr.rollback(&task.id, 1).await.unwrap().unwrap();
+    assert_eq!(removed.text, "again");
+    assert_eq!(mgr.entries(&task.id, None).unwrap(), original[..cut]);
+    assert!(mgr.task(&task.id).unwrap().state.lock().session_id.is_none());
+    mgr.shutdown();
+
+    let restored = manager(tmp.path(), agent.clone());
+    restored.prompt(&task.id, text("fail context"), false).await.unwrap();
+    wait_for(&restored, &task.id, AgentStatus::Failed).await;
+    assert_eq!(restored.task(&task.id).unwrap().state.lock().context_before, Some(cut));
+    restored.prompt(&task.id, text("edited message"), false).await.unwrap();
+    wait_for(&restored, &task.id, AgentStatus::Ready).await;
+    let sent = agent.prompts.lock().last().unwrap().clone();
+    let context = sent[0]["text"].as_str().unwrap();
+    assert!(context.contains("again"));
+    assert!(context.contains("second turn"));
+    let history: Value = serde_json::from_str(context.split_once("\n\n").unwrap().1).unwrap();
+    assert_eq!(history.as_array().unwrap().len(), 2);
+    assert!(!context.contains("fail context"));
+    assert_eq!(sent[1]["text"], "edited message");
+    assert!(restored.task(&task.id).unwrap().state.lock().context_before.is_none());
+    assert!(!agent.calls.lock().iter().any(|c| c.starts_with("_openidea/rollback")));
+    restored.prompt(&task.id, text("again"), false).await.unwrap();
+    wait_for(&restored, &task.id, AgentStatus::Ready).await;
+    assert_eq!(agent.prompts.lock().last().unwrap()[0]["text"], "again");
+    restored.shutdown();
 }

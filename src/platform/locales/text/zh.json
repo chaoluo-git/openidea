@@ -7144,5 +7144,10 @@
   "host is not remembered for this plugin": "此插件没有记住该主机的授权",
   "URL must name one exact host": "URL 必须指定一个确切主机",
   "Allow for this session": "本次会话内允许",
-  "This allows {host} until the remote session ends.": "允许连接到 {host}，直到本次远程会话结束。"
+  "This allows {host} until the remote session ends.": "允许连接到 {host}，直到本次远程会话结束。",
+  "Copy Table": "复制表格",
+  "Couldn't copy table": "无法复制表格",
+  "Restart With Earlier Messages": "使用之前的消息重新开始",
+  "This agent starts a fresh session with earlier messages as text context. Earlier images are not resent.": "此 Agent 会新建会话，将之前的消息作为文本上下文。之前的图片不会重新发送。",
+  "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are.": "此 Agent 不支持回退。将新建会话，以之前的消息作为文本上下文，并替换此消息及后续回复。之前的图片不会重新发送。Agent 已修改的文件保持现状。"
 }

@@ -1223,7 +1223,8 @@ function UserMessage({
   const archived = task.status === "archived";
   const idle = !archived && !isBusy(task.status) && turn !== null;
   const { fork = false, rollback = false } = task.capabilities ?? {};
-  // Editing and running again from a message need an agent that can drop turns.
+  const editable = !archived && turn !== null;
+  // Retracting and running again without a restart need native rewind.
   const inPlace = !archived && rollback && turn !== null;
   // A copy up to an earlier turn drops the later ones from the copied session.
   const canFork = idle && fork && (rollback || turn === turnCount - 1);
@@ -1233,6 +1234,7 @@ function UserMessage({
         initial={entry.text}
         initialImages={entry.images ?? []}
         later={turn < turnCount - 1}
+        restart={turn > 0 && !rollback}
         onCancel={() => setEditing(false)}
         onSend={async (text, images) => {
           if (await rerunFrom(task.id, turn, text, images)) setEditing(false);
@@ -1265,7 +1267,7 @@ function UserMessage({
         )}
       </div>
       <div className={styles.messageFooter}>
-        {inPlace && entry.text && (
+        {editable && (Boolean(entry.text) || Boolean(entry.images?.length)) && (
           <Button variant="ghost" size="small" icon="edit" title="Edit & Rerun" onClick={() => setEditing(true)}>
             Edit & Rerun
           </Button>
@@ -1314,6 +1316,7 @@ function MessageEditor({
   initial,
   initialImages,
   later,
+  restart,
   onCancel,
   onSend,
 }: {
@@ -1321,6 +1324,7 @@ function MessageEditor({
   initialImages: AgentImage[];
   /** Turns follow it (they are dropped on send). */
   later: boolean;
+  restart: boolean;
   onCancel: () => void;
   onSend: (text: string, images: AgentImage[]) => Promise<void>;
 }) {
@@ -1378,6 +1382,13 @@ function MessageEditor({
         </div>
       )}
       <div className={styles.editBar}>
+        {restart && (
+          <span className={styles.muted}>
+            <T>
+              This agent starts a fresh session with earlier messages as text context. Earlier images are not resent.
+            </T>
+          </span>
+        )}
         {later && (
           <span className={styles.muted}>
             <T>The messages after this one are replaced. Files the agent changed stay as they are.</T>

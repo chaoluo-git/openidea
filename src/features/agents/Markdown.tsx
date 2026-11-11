@@ -89,7 +89,10 @@ function renderHtml(text: string): string {
   root.querySelectorAll("table").forEach((table) => {
     const scroll = document.createElement("div");
     scroll.className = styles.tableScroll!;
-    table.replaceWith(scroll);
+    const card = document.createElement("div");
+    card.className = styles.tableCard!;
+    table.replaceWith(card);
+    card.appendChild(scroll);
     scroll.appendChild(table);
   });
   // WebKit cuts controls inside <pre> out of a text selection, even when transparent.
@@ -159,10 +162,61 @@ function enhance(
   const disposeImages = loadImages(root, cwd, images);
   const toolbars: HTMLElement[] = [];
   const timers = new Set<ReturnType<typeof setTimeout>>();
+  const copyButton = (text: string, label: string, compact = false) => {
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = compact ? styles.tableCopy! : styles.codeCopy!;
+    if (!compact) copy.dataset.copy = text;
+    copy.setAttribute("aria-live", "polite");
+    const showCopied = (copied: boolean) => {
+      copy.title = tx(copied ? "Copied" : label);
+      copy.setAttribute("aria-label", copy.title);
+      copy.replaceChildren(iconNode(copied ? "check" : "copy", 14));
+      if (!compact) copy.appendChild(document.createTextNode(copy.title));
+    };
+    showCopied(false);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    copy.onclick = () => {
+      copy.disabled = true;
+      void executeAction(compact ? "agents.copyTable" : "agents.copyCode", {
+        text,
+        onCopied: () => {
+          if (!alive) return;
+          showCopied(true);
+          if (timer) {
+            clearTimeout(timer);
+            timers.delete(timer);
+          }
+          timer = setTimeout(() => {
+            timers.delete(timer!);
+            if (alive) showCopied(false);
+          }, 2000);
+          timers.add(timer);
+        },
+      } satisfies CopyCode).finally(() => {
+        if (alive) copy.disabled = false;
+      });
+    };
+    return copy;
+  };
   root.querySelectorAll<HTMLElement>(`.${styles.tableScroll}`).forEach((scroll) => {
     scroll.tabIndex = 0;
     scroll.setAttribute("role", "region");
     scroll.setAttribute("aria-label", tx("Table"));
+    const text = [...scroll.querySelectorAll("tr")]
+      .map((row) =>
+        [...row.cells]
+          .map((cell) => {
+            const content = cell.cloneNode(true) as HTMLElement;
+            content.querySelectorAll("br").forEach((br) => br.replaceWith(" "));
+            return (content.textContent ?? "").trim().replace(/\s+/g, " ");
+          })
+          .join("\t"),
+      )
+      .join("\n");
+    const copy = copyButton(text, "Copy Table", true);
+    scroll.parentElement!.appendChild(copy);
+    toolbars.push(copy);
   });
   root.querySelectorAll<HTMLElement>("pre > code").forEach((code, index) => {
     const pre = code.parentElement!;
@@ -199,39 +253,7 @@ function enhance(
       };
       toolbar.appendChild(wrap);
     }
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = styles.codeCopy!;
-    copy.dataset.copy = text;
-    copy.setAttribute("aria-live", "polite");
-    const showCopied = (copied: boolean) => {
-      copy.title = tx(copied ? "Copied" : "Copy Code");
-      copy.setAttribute("aria-label", copy.title);
-      copy.replaceChildren(iconNode(copied ? "check" : "copy", 14), document.createTextNode(copy.title));
-    };
-    showCopied(false);
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    copy.onclick = () => {
-      copy.disabled = true;
-      void executeAction("agents.copyCode", {
-        text,
-        onCopied: () => {
-          if (!alive) return;
-          showCopied(true);
-          if (timer) {
-            clearTimeout(timer);
-            timers.delete(timer);
-          }
-          timer = setTimeout(() => {
-            timers.delete(timer!);
-            if (alive) showCopied(false);
-          }, 2000);
-          timers.add(timer);
-        },
-      } satisfies CopyCode).finally(() => {
-        if (alive) copy.disabled = false;
-      });
-    };
+    const copy = copyButton(text, "Copy Code");
     toolbar.appendChild(copy);
     block.prepend(toolbar);
     toolbars.push(toolbar);

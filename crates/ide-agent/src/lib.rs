@@ -282,6 +282,9 @@ struct TaskFile {
     /// Turns to drop from the session once it is loaded (a fork of an earlier point).
     #[serde(default, skip_serializing_if = "is_zero")]
     pending_rollback: u32,
+    /// Retained entries to send as reference context after restarting an agent without rewind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    context_before: Option<usize>,
     /// The user named the task: its agent's own title updates no longer replace it.
     #[serde(default, skip_serializing_if = "is_false")]
     title_renamed: bool,
@@ -294,6 +297,7 @@ struct TaskState {
     wanted: Vec<AgentConfigChoice>,
     before: Arc<BTreeMap<String, worktree::Stamp>>,
     pending_rollback: u32,
+    context_before: Option<usize>,
     /// The user named the task; see `TaskFile::title_renamed`.
     title_renamed: bool,
     /// A turn is running or about to (prompts arriving now are queued).
@@ -606,6 +610,7 @@ impl AgentManager {
             before,
             subagents: Vec::new(),
             pending_rollback: 0,
+            context_before: None,
             title_renamed: false,
         };
         let handle = Task::restore(file, self.shared.clone());
@@ -810,6 +815,7 @@ impl AgentManager {
                 before: (*s.before).clone(),
                 subagents: s.conversation.saved_subagents(),
                 pending_rollback: total - keep,
+                context_before: None,
                 title_renamed: s.title_renamed,
             }
         };
@@ -823,7 +829,8 @@ impl AgentManager {
 
     /// Drops the task's turns after its first `turns`, in the agent's session and in the
     /// conversation; returns the message that started the first dropped turn. Files the
-    /// agent changed stay as they are.
+    /// agent changed stay as they are. Agents without rewind restart with the retained
+    /// messages and tool results as text context on the next prompt.
     pub async fn rollback(&self, id: &str, turns: u32) -> IdeResult<Option<AgentPrompt>> {
         let task = self.task(id)?;
         if task.state.lock().busy {
@@ -849,6 +856,7 @@ impl AgentManager {
                 // The fresh session reports its own usage; nothing carries over.
                 s.task.usage = None;
                 s.pending_rollback = 0;
+                s.context_before = None;
                 s.task.updated_ms = now_ms();
                 first
             };
@@ -859,7 +867,29 @@ impl AgentManager {
         }
         let live = task.ensure_session().await.map_err(IdeError::internal)?;
         if !live.capabilities.rollback {
-            return Err(IdeError::invalid("this agent can't undo turns"));
+            // ACP has no standard rewind operation. Keep the visible prefix and seed a
+            // fresh session with reference context instead of replaying past tool calls.
+            task.kill();
+            let first = {
+                let mut s = task.state.lock();
+                let first = match s.conversation.main.entries.get(cut) {
+                    Some(AgentEntry::User { text, .. }) => {
+                        Some(AgentPrompt { text: text.clone(), ..Default::default() })
+                    }
+                    _ => None,
+                };
+                s.session_id = None;
+                s.conversation.truncate(cut);
+                s.context_before = Some(cut);
+                s.pending_rollback = 0;
+                s.task.usage = None;
+                s.task.updated_ms = now_ms();
+                first
+            };
+            task.persist();
+            self.shared.emit(AgentEvent::Truncated { task: id.to_owned(), length: cut as u32 });
+            task.emit_task();
+            return Ok(first);
         }
         let drop = (starts.len() - turns as usize) as u32;
         let _: Value = live
@@ -1113,6 +1143,7 @@ impl Task {
                 wanted: file.wanted,
                 before: Arc::new(file.before),
                 pending_rollback: file.pending_rollback,
+                context_before: file.context_before,
                 title_renamed: file.title_renamed,
                 busy: false,
                 background_tasks: Vec::new(),
@@ -1225,6 +1256,7 @@ impl Task {
                 before: (*s.before).clone(),
                 subagents: s.conversation.saved_subagents(),
                 pending_rollback: s.pending_rollback,
+                context_before: s.context_before,
                 title_renamed: s.title_renamed,
             })
         };
@@ -1447,7 +1479,10 @@ impl Task {
         let result: Result<Value, RpcError> =
             live.peer.request("session/prompt", json!({ "sessionId": live.session, "prompt": content }), None).await;
         match result {
-            Ok(v) => Ok(v.get("stopReason").and_then(Value::as_str).unwrap_or("end_turn").to_owned()),
+            Ok(v) => {
+                self.state.lock().context_before = None;
+                Ok(v.get("stopReason").and_then(Value::as_str).unwrap_or("end_turn").to_owned())
+            }
             Err(e) => Err(self.failure(e)),
         }
     }
@@ -1460,7 +1495,32 @@ impl Task {
         } else {
             Vec::new()
         };
-        blocks(prompt, &contents)
+        let mut blocks = blocks(prompt, &contents);
+        let s = self.state.lock();
+        if let Some(end) = s.context_before {
+            let history: Vec<Value> = s
+                .conversation
+                .main
+                .entries
+                .iter()
+                .take(end)
+                .filter_map(|entry| match entry {
+                    AgentEntry::User { text, attachments, .. } => {
+                        Some(json!({"role": "user", "text": text, "attachments": attachments}))
+                    }
+                    AgentEntry::Agent { text } => Some(json!({"role": "assistant", "text": text})),
+                    AgentEntry::Tool { title, status, output, .. } => {
+                        Some(json!({"role": "tool", "title": title, "status": status, "output": output}))
+                    }
+                    _ => None,
+                })
+                .collect();
+            blocks.insert(0, json!({"type": "text", "text": format!(
+                "Earlier conversation, supplied as reference after editing a message. Completed actions are history; do not repeat them. Files on disk remain in their current state. Earlier image attachments are listed by name only. Respond to the new message that follows this context.\n\n{}",
+                Value::Array(history)
+            )}));
+        }
+        blocks
     }
 
     /// What a failed request means for the user: signed out, out of quota, or the agent's message.

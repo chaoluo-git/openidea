@@ -153,6 +153,45 @@ async function edit() {
   return { user, box, send: screen.getAllByRole("button", { name: "Send" })[0]! };
 }
 
+it.each([false, true])("edits a later Copilot message without native rollback (confirmed: %s)", async (confirmed) => {
+  const copilot = { ...task, provider: "copilot", capabilities: { ...task.capabilities!, rollback: false } };
+  useAgents.setState({
+    tasks: new Map([[task.id, copilot]]),
+    entries: new Map([[task.id, [...entries, { ...entries[0]!, text: "Follow up" } as AgentEntry, entries[1]!]]]),
+  });
+  ipc.confirm.mockResolvedValue(confirmed);
+  render(<SessionEditor input={{ kind: "agent-session", key: task.id, data: { task: task.id } }} />);
+  const user = userEvent.setup();
+  const edits = screen.getAllByRole("button", { name: "Edit & Rerun" });
+  expect(edits).toHaveLength(2);
+  await user.click(edits[1]!);
+  expect(
+    screen.getByText(
+      "This agent starts a fresh session with earlier messages as text context. Earlier images are not resent.",
+    ),
+  ).toBeVisible();
+  const box = screen.getAllByRole("textbox", { name: "Message" })[0]!;
+  fireEvent.change(box, { target: { value: "Corrected follow up" } });
+  await user.click(screen.getAllByRole("button", { name: "Send" })[0]!);
+  expect(ipc.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Restart With Earlier Messages" }));
+  if (confirmed) {
+    await waitFor(() => expect(ipc.rollback).toHaveBeenCalledExactlyOnceWith(task.id, 1));
+    expect(ipc.prompt).toHaveBeenCalledWith(task.id, { text: "Corrected follow up", files: [], images: [] }, false);
+  } else {
+    expect(ipc.rollback).not.toHaveBeenCalled();
+    expect(ipc.prompt).not.toHaveBeenCalled();
+    expect(box).toHaveValue("Corrected follow up");
+  }
+});
+
+it("also exposes editing the first message for an agent without rewind", async () => {
+  useAgents.setState({ tasks: new Map([[task.id, { ...task, capabilities: undefined }]]) });
+  const { user, send } = await edit();
+  await user.click(send);
+  await waitFor(() => expect(ipc.rollback).toHaveBeenCalledExactlyOnceWith(task.id, 0));
+  expect(ipc.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Start a Fresh Agent Session" }));
+});
+
 it.each([false, true])("recovers images after failed regeneration (new draft: %s)", async (draft) => {
   const image = { mimeType: "image/png", data: "AAA", name: "shot.png" };
   const added = { mimeType: "image/png", data: "BBB", name: "added.png" };

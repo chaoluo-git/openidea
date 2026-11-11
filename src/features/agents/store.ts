@@ -654,6 +654,7 @@ async function stopForEdit(task: string) {
  * Whatever fails, the message is kept in the composer so it can be sent again.
  */
 export async function rerunFrom(task: string, turn: number, text: string, images: AgentImage[] = []): Promise<boolean> {
+  const restart = turn > 0 && !useAgents.getState().tasks.get(task)?.capabilities?.rollback;
   if (
     turn === 0 &&
     !(await confirm({
@@ -661,6 +662,17 @@ export async function rerunFrom(task: string, turn: number, text: string, images
       message:
         "This clears the entire conversation and starts a fresh agent session with this message. Files the agent changed stay as they are.",
       ok: "Start Fresh",
+      icon: "warning",
+    }))
+  )
+    return false;
+  if (
+    restart &&
+    !(await confirm({
+      title: "Restart With Earlier Messages",
+      message:
+        "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are.",
+      ok: "Edit & Rerun",
       icon: "warning",
     }))
   )
