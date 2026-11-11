@@ -354,8 +354,24 @@ function IssuePresets() {
 }
 
 export const VCS_PAGES: PageSpec[] = [
-  // No sections: the page links to its sub-pages.
-  { id: "vcs", title: "Version Control", order: 300, keywords: ["git", "vcs", "history"] },
+  {
+    id: "vcs",
+    title: "Version Control",
+    order: 300,
+    keywords: ["git", "vcs", "history", "diff window", "Open Diff as Editor Tab"],
+    sections: [
+      {
+        options: [
+          {
+            kind: "toggle",
+            key: "vcs.openDiffAsTab",
+            label: "Open Diff as Editor Tab",
+            hint: "When off, comparisons open over the full work area.",
+          },
+        ],
+      },
+    ],
+  },
   {
     id: "vcs.commit",
     title: "Commit",

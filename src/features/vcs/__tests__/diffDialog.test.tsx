@@ -48,6 +48,7 @@ const diffDialogs = async () => (await screen.findAllByRole("dialog", { name: /\
 
 describe("Commit dialog diff window (#1863)", () => {
   beforeEach(() => {
+    localStorage.removeItem("openidea.vcs.diffDialogMaximized");
     // The Commit dialog exists with "Use non-modal commit interface" unticked.
     useProject.setState({ settings: { vcs: { commit: { nonModal: false } } } as Settings });
     // The dialog stack is module state: close whatever a previous test left open.
@@ -67,6 +68,34 @@ describe("Commit dialog diff window (#1863)", () => {
     expect(openDiff).not.toHaveBeenCalled();
     expect(screen.getByTestId("diff-view")).toHaveAttribute("data-path", "/p/a.ts");
     expect(editor.mock.calls.at(-1)?.[0].input.data.embedded).toBe(true);
+  });
+
+  it("opens maximized with the non-modal Commit interface by default", async () => {
+    useProject.setState({ settings: { vcs: { commit: { nonModal: true } } } as Settings });
+    render(
+      <>
+        <ChangesTree mode="commit" />
+        <VcsDialogHost />
+      </>,
+    );
+    activateFile("a.ts");
+    const dialog = await diffDialogs();
+    expect(dialog).toHaveAttribute("data-maximized", "true");
+    expect(dialog.style.width).toBe("100%");
+    expect(dialog.style.height).toBe("100%");
+    expect(openDiff).not.toHaveBeenCalled();
+  });
+
+  it("restores the normal size and maximizes again from the title bar", async () => {
+    render(<VcsDialogHost />);
+    act(() => {
+      openDiffDialog({ path: "/p/a.ts", left: { type: "rev", rev: "HEAD" }, right: { type: "worktree" } });
+    });
+    const dialog = await diffDialogs();
+    act(() => fireEvent.click(screen.getAllByRole("button", { name: "Restore Size" }).at(-1)!));
+    expect(dialog).not.toHaveAttribute("data-maximized");
+    act(() => fireEvent.doubleClick(dialog.querySelector("[data-dialog-titlebar]")!));
+    expect(dialog).toHaveAttribute("data-maximized", "true");
   });
 
   it("keeps the changes tree mounted underneath and closes on Esc", async () => {
@@ -93,6 +122,9 @@ describe("Commit dialog diff window (#1863)", () => {
       (i) => i.kind !== "separator" && "label" in i && i.label === "Show Diff",
     );
     expect(item).toMatchObject({ label: "Show Diff" });
+    expect(
+      nodeMenu([node], ["/p"], { roots: [node] }).some((i) => "label" in i && i.label === "Show Diff in a New Tab"),
+    ).toBe(false);
     act(() => (item as { run: () => void }).run());
     await diffDialogs();
     expect(openDiff).not.toHaveBeenCalled();
@@ -125,6 +157,7 @@ describe("Commit dialog diff window (#1863)", () => {
     await diffDialogs();
     // Drag the corner grip; jsdom reports a zero rect so the dialog clamps to its
     // minimums — what matters is that the resize end is persisted.
+    fireEvent.click(screen.getAllByRole("button", { name: "Restore Size" }).at(-1)!);
     fireEvent.pointerDown(screen.getByRole("separator", { name: "Resize" }), { button: 0, clientX: 0, clientY: 0 });
     fireEvent.pointerMove(window, { buttons: 1, clientX: 100, clientY: 80 });
     fireEvent.pointerUp(window);
@@ -184,8 +217,8 @@ describe("Commit dialog diff window (#1863)", () => {
   });
 });
 
-it("opens an editor tab instead once the non-modal interface is chosen", async () => {
-  useProject.setState({ settings: null });
+it("opens an editor tab instead when that placement is explicitly chosen", async () => {
+  useProject.setState({ settings: { vcs: { openDiffAsTab: true } } as Settings });
   useVcs.setState({ available: true, root: "/p", repo: "/p", roots: ["/p"], status: [modified("/p/a.ts")] });
   render(<ChangesTree mode="dialog" />);
   activateFile("a.ts");

@@ -33,6 +33,19 @@ for 60+ languages. Builds for macOS, Windows and Linux. On Windows, if you'd
 rather skip the installer, each release also ships a portable zip — unpack it
 and run `openidea.exe`.
 
+## Review changed files
+
+Double-click a file in **Commit → Changes** to open its diff over the full work
+area. Use the toolbar arrows to move between differences or files; **Escape**
+returns to the same Changes selection and commit draft. Restore or maximize the
+viewer with its window controls. To keep comparisons in editor tabs, enable
+**Settings → Version Control → Open Diff as Editor Tab**, or use a file's
+**Show Diff in a New Tab** context action.
+
+Unsaved edits remain available when you switch files or close the viewer. Save
+and Save All still control disk writes when autosave is disabled; failed saves
+keep the buffer available for retry.
+
 ## Generate commit messages with an agent
 
 Select the files or code blocks to commit, then click **Generate** above the commit

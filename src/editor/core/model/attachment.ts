@@ -183,14 +183,14 @@ export async function attachDocument(
       if (slot) slot.dispatchLocal({ changes, userEvent });
       else target.view?.dispatch({ changes, userEvent });
     },
-    release: () => {
+    release: (options) => {
       if (released) return;
       released = true;
       detachHistory?.();
       detachHistory = null;
       target.view = null;
       target.storedState = null;
-      model.detach(target);
+      model.detach(target, options?.discard);
     },
   };
 }

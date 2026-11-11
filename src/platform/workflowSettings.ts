@@ -55,6 +55,7 @@ export interface CommitSettingsValid {
 }
 
 export interface VcsSettingsValid {
+  openDiffAsTab: boolean;
   showDirtyDirectories: boolean;
   limitHistory: boolean;
   historyLimit: number;
@@ -182,6 +183,7 @@ export const DEFAULT_EXTERNAL_TOOL: ExternalToolValid = {
 
 export const DEFAULT_WORKFLOW: WorkflowSettings = {
   vcs: {
+    openDiffAsTab: false,
     // IDEA's VcsConfiguration.SHOW_DIRTY_RECURSIVELY is off by default.
     showDirtyDirectories: false,
     limitHistory: true,
@@ -312,6 +314,7 @@ export function validateVcs(raw: unknown): VcsSettingsValid {
   const confirm = ["ask", "silently", "never"] as const;
   return {
     showDirtyDirectories: bool(v.showDirtyDirectories, d.showDirtyDirectories),
+    openDiffAsTab: bool(v.openDiffAsTab, d.openDiffAsTab),
     limitHistory: bool(v.limitHistory, d.limitHistory),
     historyLimit: num(v.historyLimit, d.historyLimit, L.historyLimit, true),
     git: {

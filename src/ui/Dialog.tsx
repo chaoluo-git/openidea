@@ -123,6 +123,9 @@ export interface DialogProps {
   initialSize?: { w: number; h: number } | null;
   /** The size a resize ended at. */
   onResized?: (size: { w: number; h: number }) => void;
+  /** Fill the work area while keeping the normal size available for restoring. */
+  maximized?: boolean;
+  onToggleMaximize?: () => void;
   /**
    * `top` places a lightweight modal popup (choosers, Search Everywhere) near
    * the top. Popups (also any dialog without a title) get no window title bar
@@ -220,6 +223,8 @@ function DialogInner({
   maxHeight,
   initialSize,
   onResized,
+  maximized = false,
+  onToggleMaximize,
   position = "center",
   className,
   dismissOnBackdrop,
@@ -231,6 +236,7 @@ function DialogInner({
 }: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   const platform = useDialogPlatform(platformOverride);
+  const nativeCaption = usePlatform((s) => s.overlayTitleBar) && platform === "mac";
   const given = useGivenTx();
   if (typeof title === "string") title = given(title);
   // Choosers and untitled dialogs (Recent Files, About) are IDEA popups.
@@ -361,7 +367,7 @@ function DialogInner({
 
   const label = aria["aria-label"] ?? (typeof title === "string" ? title : undefined);
   const hasFooter = !!(buttons?.length || footerStart || onHelp || footer);
-  const canResize = resizable === "both";
+  const canResize = resizable === "both" && !maximized;
 
   const resize = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -401,7 +407,12 @@ function DialogInner({
 
   return createPortal(
     <div
-      className={clsx(styles.backdrop, position === "top" && styles.top)}
+      className={clsx(
+        styles.backdrop,
+        position === "top" && styles.top,
+        maximized && styles.maximizedBackdrop,
+        maximized && nativeCaption && styles.belowTitleBar,
+      )}
       onPointerDown={(e) => {
         if ((dismissOnBackdrop ?? popup) && e.target === e.currentTarget) onClose();
       }}
@@ -415,13 +426,18 @@ function DialogInner({
         data-platform={platform}
         data-alert={icon ? "" : undefined}
         data-inactive={active ? undefined : ""}
-        className={clsx(styles.dialog, popup ? styles.popup : styles.window, className)}
-        onPointerDown={drag}
+        data-maximized={maximized || undefined}
+        className={clsx(styles.dialog, popup ? styles.popup : styles.window, maximized && styles.maximized, className)}
+        onPointerDown={maximized ? undefined : drag}
+        onDoubleClick={(e) => {
+          if ((e.target as Element).closest("[data-dialog-titlebar]") && !(e.target as Element).closest("button"))
+            onToggleMaximize?.();
+        }}
         style={{
-          width: size ? size.w : width,
-          height: size?.h,
-          maxHeight: !size && maxHeight ? `min(${maxHeight}px, 100%)` : undefined,
-          translate: offset.x || offset.y ? `${offset.x}px ${offset.y}px` : undefined,
+          width: maximized ? "100%" : size ? size.w : width,
+          height: maximized ? "100%" : size?.h,
+          maxHeight: !maximized && !size && maxHeight ? `min(${maxHeight}px, 100%)` : undefined,
+          translate: !maximized && (offset.x || offset.y) ? `${offset.x}px ${offset.y}px` : undefined,
         }}
       >
         {icon ? null : popup ? (
@@ -443,13 +459,28 @@ function DialogInner({
                 <Icon name="close" size={10} className={styles.lightGlyph} />
               </button>
               <button type="button" tabIndex={-1} disabled className={styles.light} aria-label={tx("Minimize")} />
-              <button type="button" tabIndex={-1} disabled className={styles.light} aria-label={tx("Zoom")} />
+              <button
+                type="button"
+                tabIndex={-1}
+                disabled={!onToggleMaximize}
+                className={clsx(styles.light, onToggleMaximize && styles.lightZoom)}
+                aria-label={tx(maximized ? "Restore Size" : "Zoom")}
+                onClick={onToggleMaximize}
+              />
             </span>
             <span className={styles.title}>{title}</span>
           </div>
         ) : (
           <div className={styles.titleBar} data-dialog-drag="" data-dialog-titlebar="">
             <span className={styles.title}>{title}</span>
+            {onToggleMaximize && (
+              <IconButton
+                icon={maximized ? "minimize" : "maximize"}
+                title={maximized ? "Restore Size" : "Zoom"}
+                size="small"
+                onClick={onToggleMaximize}
+              />
+            )}
             <IconButton icon="close" title="Close" size="small" tabIndex={-1} onClick={onClose} />
           </div>
         )}
