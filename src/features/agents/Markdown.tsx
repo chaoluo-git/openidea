@@ -11,14 +11,14 @@ import { Marked } from "marked";
 import DOMPurify from "dompurify";
 import { highlightInto } from "@/editor/lsp/markdown";
 import { iconNode } from "@/editor/lsp/iconMarkup";
-import { call, commands } from "@/platform/ipc";
 import { tx } from "@/platform/i18n";
 import { openExternalUrl } from "@/platform/openUrl";
 import { executeAction } from "@/platform/actions";
 import { editorService } from "@/workbench/contributions";
 import { hasMermaid, renderMermaidIn } from "@/features/viewers/markdown/mermaid";
 import { subscribeTheme, themeKey } from "@/platform/themeWatch";
-import { fileHref, pathLink, type PathLink } from "./conversation";
+import { fileHref, pathHref, type PathLink } from "./conversation";
+import { enhanceFileLinks } from "./markdownLinks";
 import { loadImages } from "./markdownImages";
 import type { CopyCode, WrapCode } from "./codeBlockActions";
 import styles from "./Session.module.css";
@@ -30,6 +30,12 @@ const marked = new Marked({
   gfm: true,
   breaks: true,
   renderer: {
+    link({ href, title, tokens }) {
+      if (!/^file:/i.test(href)) return false;
+      const link = fileHref(href, "");
+      if (!link) return this.parser.parseInline(tokens);
+      return `<a href="${escapeHtml(pathHref(link))}"${title ? ` title="${escapeHtml(title)}"` : ""}>${this.parser.parseInline(tokens)}</a>`;
+    },
     code({ text, lang }) {
       if (lang?.trim().split(/\s+/)[0]?.toLowerCase() !== "mermaid") return false;
       return `<div data-mermaid=""><pre><code class="language-mermaid">${escapeHtml(text)}</code></pre></div>\n`;
@@ -137,20 +143,6 @@ function wrapLooseText(li: Element) {
   flush();
 }
 
-/** Whether a path names an existing file, per path (agents name the same files again and again). */
-const existing = new Map<string, Promise<boolean>>();
-function fileExists(path: string): Promise<boolean> {
-  let known = existing.get(path);
-  if (!known) {
-    known = call(commands.fsProbe(path)).then(
-      () => true,
-      () => false,
-    );
-    existing.set(path, known);
-  }
-  return known;
-}
-
 export function openPathLink(link: PathLink) {
   const selection = link.line === undefined ? undefined : { line: link.line, col: link.col ?? 0 };
   void editorService().openFile(link.path, { selection, focus: true });
@@ -165,6 +157,7 @@ function enhance(
 ): () => void {
   let alive = true;
   const disposeImages = loadImages(root, cwd, images);
+  const disposeLinks = enhanceFileLinks(root, cwd);
   const toolbars: HTMLElement[] = [];
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const copyButton = (text: string, label: string, compact = false) => {
@@ -177,7 +170,6 @@ function enhance(
       copy.title = tx(copied ? "Copied" : label);
       copy.setAttribute("aria-label", copy.title);
       copy.replaceChildren(iconNode(copied ? "check" : "copy", 14));
-      if (!compact) copy.appendChild(document.createTextNode(copy.title));
     };
     showCopied(false);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -231,10 +223,10 @@ function enhance(
     const block = pre.parentElement!;
     const toolbar = document.createElement("div");
     toolbar.className = styles.codeToolbar!;
-    const language = document.createElement("span");
-    language.className = styles.codeLanguage!;
-    language.textContent = lang || tx("Plain Text");
-    toolbar.appendChild(language);
+    const controls = document.createElement("div");
+    controls.className = styles.codeControls!;
+    toolbar.appendChild(controls);
+    pre.setAttribute("aria-label", lang || tx("Plain Text"));
     if (!block.hasAttribute("data-mermaid")) {
       const wrap = document.createElement("button");
       wrap.type = "button";
@@ -256,32 +248,20 @@ function enhance(
           },
         } satisfies WrapCode);
       };
-      toolbar.appendChild(wrap);
+      controls.appendChild(wrap);
     }
     const copy = copyButton(text, "Copy Code");
-    toolbar.appendChild(copy);
+    controls.appendChild(copy);
     block.prepend(toolbar);
     toolbars.push(toolbar);
     if (!block.hasAttribute("data-mermaid")) void highlightInto(code, text, lang);
-  });
-  root.querySelectorAll<HTMLElement>("code").forEach((code) => {
-    if (code.parentElement?.tagName === "PRE" || code.closest("a")) return;
-    const link = pathLink(code.textContent ?? "", cwd);
-    if (!link) return;
-    void fileExists(link.path).then((exists) => {
-      if (!alive || !exists) return;
-      code.classList.add(styles.fileLink!);
-      code.dataset.path = link.path;
-      if (link.line !== undefined) code.dataset.line = String(link.line);
-      if (link.col !== undefined) code.dataset.col = String(link.col);
-      code.title = tx`Open ${link.path}`;
-    });
   });
   return () => {
     alive = false;
     toolbars.forEach((toolbar) => toolbar.remove());
     timers.forEach(clearTimeout);
     disposeImages();
+    disposeLinks();
   };
 }
 
@@ -327,16 +307,11 @@ export function Markdown({
       className={styles.markdown}
       onClick={(e) => {
         const target = e.target as HTMLElement;
-        const file = target.closest<HTMLElement>("code[data-path]");
-        if (file && !window.getSelection()?.toString()) {
-          const line = file.dataset.line === undefined ? undefined : Number(file.dataset.line);
-          const col = file.dataset.col === undefined ? undefined : Number(file.dataset.col);
-          openPathLink({ path: file.dataset.path!, line, col });
-          return;
-        }
         const a = target.closest("a");
         if (!a) return;
         e.preventDefault();
+        const selection = window.getSelection();
+        if (e.detail > 0 && selection && !selection.isCollapsed && selection.containsNode(a, true)) return;
         const href = a.getAttribute("href") ?? "";
         if (/^https?:/i.test(href)) void openExternalUrl(href);
         else {

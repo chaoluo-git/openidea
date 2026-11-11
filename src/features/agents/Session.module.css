@@ -150,24 +150,45 @@
 }
 /* Scrolled up: one click back to the latest message, floating over the stream's end. */
 .jumpToLatest {
+  --icon-color: var(--bg-app);
   position: absolute;
-  right: var(--space-3);
-  bottom: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--space-3);
   z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--h-control-small);
-  height: var(--h-control-small);
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-toolbar-button);
-  background: var(--bg-app);
-  color: var(--fg-muted);
+  border-radius: 50%;
+  background: var(--agent-fg);
+  color: var(--bg-app);
+  box-shadow: var(--shadow-popup);
   cursor: pointer;
 }
 .jumpToLatest:hover {
-  background: var(--bg-hover);
+  filter: brightness(1.15);
+}
+.jumpToLatest :global(svg [stroke]) {
+  stroke: var(--bg-app);
+}
+.editableText {
+  display: block;
+  width: 100%;
+  font: inherit;
+  text-align: start;
+  white-space: inherit;
+  overflow-wrap: inherit;
+  cursor: pointer;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.editableText:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 /* Your message with its actions, shown on hover. */
 .message {
@@ -407,6 +428,7 @@
   overflow-wrap: anywhere;
 }
 .messageCode {
+  display: block;
   margin: 0;
   font-family: var(--font-mono);
   font-size: inherit;
@@ -462,7 +484,8 @@
 }
 .codeBlock > :global(pre) {
   margin: 0;
-  border-radius: 0 0 var(--radius-popup-large) var(--radius-popup-large);
+  border-radius: var(--radius-popup-large);
+  padding-right: calc(var(--space-4) + 64px);
   background: var(--bg-app);
 }
 .codeBlock[data-wrapped] > :global(pre) {
@@ -471,27 +494,47 @@
 }
 .codeToolbar {
   position: sticky;
-  top: 0;
+  top: var(--space-2);
   z-index: 1;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 32px;
-  padding: 4px var(--space-2);
-  border-bottom: 1px solid var(--border);
-  border-radius: var(--radius-popup-large) var(--radius-popup-large) 0 0;
-  background: var(--bg-elev);
-  color: var(--fg-secondary);
-  font-size: var(--fs-small);
+  justify-content: flex-end;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
 }
-.codeLanguage {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.codeControls {
+  display: inline-flex;
+  flex: none;
+  align-self: flex-start;
+  margin: var(--space-2);
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-popup);
+  background: var(--bg-app);
+  box-shadow: var(--shadow-popup);
+  pointer-events: none;
+}
+.codeBlock:hover > .codeToolbar,
+.codeBlock:focus-within > .codeToolbar,
+.markdown :global([data-mermaid]):hover > .codeToolbar,
+.markdown :global([data-mermaid]):focus-within > .codeToolbar {
+  opacity: 1;
+}
+.codeBlock:hover > .codeToolbar .codeControls,
+.codeBlock:focus-within > .codeToolbar .codeControls,
+.markdown :global([data-mermaid]):hover > .codeToolbar .codeControls,
+.markdown :global([data-mermaid]):focus-within > .codeToolbar .codeControls {
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .codeToolbar {
+    opacity: 1;
+  }
+  .codeControls {
+    pointer-events: auto;
+  }
 }
 .codeCopy,
 .codeWrap {
@@ -500,7 +543,7 @@
   justify-content: center;
   flex: none;
   gap: 5px;
-  min-width: 28px;
+  width: 28px;
   height: 28px;
   padding: 0 6px;
   border: none;
@@ -714,9 +757,9 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
-  height: var(--h-row);
+  min-height: var(--h-control);
   color: var(--fg-muted);
-  font-size: var(--fs-small);
+  font-size: var(--fs-input-large);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -732,8 +775,11 @@
 .thoughtBody {
   margin-top: var(--space-2);
   color: var(--fg-secondary);
+  font-size: var(--fs-input-large);
+  line-height: 1.6;
 }
 .thoughtText {
+  font-size: var(--fs-input-large);
   margin-top: 4px;
   padding-left: 10px;
   border-left: 2px solid var(--border-strong);
@@ -763,7 +809,7 @@
 }
 .toolTitle {
   min-width: 0;
-  font-size: var(--fs-small);
+  font-size: var(--fs-input-large);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -807,7 +853,7 @@
   padding: 0 calc(var(--space-2) / 2);
   border-radius: var(--radius-row);
   color: var(--fg-muted);
-  font-size: var(--fs-small);
+  font-size: var(--fs-input-large);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -843,7 +889,7 @@
   border: 1px solid var(--border);
   background: var(--bg-elev);
   font-family: var(--font-mono);
-  font-size: var(--fs-small);
+  font-size: var(--fs-ui);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--fg-secondary);

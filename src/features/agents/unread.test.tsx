@@ -17,6 +17,9 @@ import {
   connect,
   disconnect,
   dockTask,
+  closeDockedTab,
+  reorderDockedTab,
+  updateComposer,
   markVisible,
   openHome,
   openTask,
@@ -339,6 +342,7 @@ describe("docking a conversation in the tool window", () => {
     expect(backend.closeInput).toHaveBeenCalledWith("agent:one");
     expect(backend.closeInput).toHaveBeenCalledWith("agent:two");
     expect(useAgents.getState().docked).toBe("two");
+    expect(useAgents.getState().dockedTabs).toEqual(["one", "two"]);
     expect(backend.openInput).not.toHaveBeenCalled();
     act(() => openTask("one"));
     expect(useAgents.getState().docked).toBe("one");
@@ -346,9 +350,33 @@ describe("docking a conversation in the tool window", () => {
     expect(JSON.parse(localStorage.getItem("openidea.agents.sessionLocation.v1")!)).toBe("toolWindow");
     act(() => setSessionLocation("editor"));
     expect(useAgents.getState().docked).toBeNull();
+    expect(useAgents.getState().dockedTabs).toEqual([]);
+    expect(backend.openInput).toHaveBeenCalledWith(expect.objectContaining({ key: "agent:two" }), { focus: false });
     expect(backend.openInput).toHaveBeenLastCalledWith(expect.objectContaining({ key: "agent:one" }), { focus: true });
     act(() => openTask("two"));
     expect(backend.openInput).toHaveBeenLastCalledWith(expect.objectContaining({ key: "agent:two" }), { focus: true });
+  });
+
+  it("keeps ordered session tabs unique and closes views without discarding tasks or drafts", () => {
+    act(() => {
+      dockTask("one");
+      dockTask("two");
+      dockTask("one");
+      updateComposer("two", { text: "Keep this draft" });
+    });
+    expect(useAgents.getState().dockedTabs).toEqual(["one", "two"]);
+    expect(useAgents.getState().docked).toBe("one");
+    act(() => reorderDockedTab("one", 2));
+    expect(useAgents.getState().dockedTabs).toEqual(["two", "one"]);
+    act(() => closeDockedTab("one"));
+    expect(useAgents.getState().docked).toBe("two");
+    act(() => closeDockedTab("two"));
+    expect(useAgents.getState().docked).toBeNull();
+    expect(useAgents.getState().dockedTabs).toEqual([]);
+    expect(useAgents.getState().tasks.has("two")).toBe(true);
+    expect(useAgents.getState().composers.get("two")?.text).toBe("Keep this draft");
+    act(() => dockTask("two"));
+    expect(useAgents.getState().dockedTabs).toEqual(["two"]);
   });
 
   it("opens new tasks in the selected location and moves an unfinished draft with the layout", () => {

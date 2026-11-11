@@ -100,7 +100,9 @@ it("keeps one copy control outside each code block when effects restart", () => 
 it("copies unlabeled and indented code without copying toolbar text", async () => {
   const code = "  SELECT 1;\n\n  SELECT 2;";
   render(<Markdown text={`\`\`\`\n${code}\n\`\`\``} cwd="/repo" />);
-  expect(screen.getByText("Plain Text")).toBeInTheDocument();
+  expect(screen.getByLabelText("Plain Text")).toBeInTheDocument();
+  expect(screen.queryByText("Plain Text")).toBeNull();
+  expect(screen.getByRole("button", { name: "Copy Code" }).textContent).toBe("");
   fireEvent.click(screen.getByRole("button", { name: "Copy Code" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Copied" })).toBeEnabled());
   expect(copyText).toHaveBeenCalledExactlyOnceWith(code);
@@ -167,6 +169,7 @@ it.each([
   ["/tmp/截图%20one.jpg", "/tmp/截图 one.jpg", undefined],
   ["/repo/main.rs:12:5", "/repo/main.rs", { line: 11, col: 4 }],
   ["/repo/main.rs#L7", "/repo/main.rs", { line: 6, col: 0 }],
+  ["file:///tmp/notes.md#L12C3-L16", "/tmp/notes.md", { line: 11, col: 2 }],
 ])("opens a Markdown file link: %s", (href, path, selection) => {
   render(<Markdown text={`[查看文件](${href})`} cwd="/repo" />);
   fireEvent.click(screen.getByRole("link", { name: "查看文件" }));
@@ -179,6 +182,49 @@ it("keeps web links external", () => {
   fireEvent.click(screen.getByRole("link"));
   expect(openExternalUrl).toHaveBeenCalledWith("https://example.com/image.jpg");
   expect(openFile).not.toHaveBeenCalled();
+});
+
+it("automatically links web addresses, existing prose paths and inline code with keyboard semantics", async () => {
+  const { container } = render(
+    <Markdown
+      text={
+        "Visit https://example.com/docs. Read src/guide.md:12:5 and `/tmp/中文 说明.md#L7`.\n\n```text\nsrc/guide.md\n```"
+      }
+      cwd="/repo"
+    />,
+  );
+  fireEvent.click(screen.getByRole("link", { name: "https://example.com/docs" }));
+  expect(openExternalUrl).toHaveBeenCalledWith("https://example.com/docs");
+  const prose = await screen.findByRole("link", { name: "src/guide.md:12:5" });
+  fireEvent.click(prose);
+  expect(openFile).toHaveBeenLastCalledWith("/repo/src/guide.md", { focus: true, selection: { line: 11, col: 4 } });
+  const code = await screen.findByRole("link", { name: "/tmp/中文 说明.md#L7" });
+  expect(code.querySelector("code")).not.toBeNull();
+  fireEvent.click(code);
+  expect(openFile).toHaveBeenLastCalledWith("/tmp/中文 说明.md", { focus: true, selection: { line: 6, col: 0 } });
+  expect(container.querySelector("pre a")).toBeNull();
+});
+
+it("leaves missing references as text and retries after later output", async () => {
+  let exists = false;
+  mockIPC((cmd) => {
+    if (cmd === "fs_probe" && !exists) throw new Error("File not found");
+    return null;
+  });
+  const { rerender } = render(<Markdown text="Read `src/later-created.ts`." cwd="/missing-test" />);
+  await act(async () => {});
+  expect(screen.queryByRole("link")).toBeNull();
+  exists = true;
+  rerender(<Markdown text="Read `src/later-created.ts`. Created now." cwd="/missing-test" />);
+  expect(await screen.findByRole("link", { name: "src/later-created.ts" })).toBeInTheDocument();
+});
+
+it("does not create file links for remote URLs or unsupported schemes", () => {
+  render(<Markdown text="[remote](file://remote/tmp/a.ts) [unsafe](javascript:alert(1))" cwd="/repo" />);
+  expect(screen.queryByRole("link", { name: "remote" })).toBeNull();
+  fireEvent.click(screen.getByText("unsafe"));
+  expect(openFile).not.toHaveBeenCalled();
+  expect(openExternalUrl).not.toHaveBeenCalled();
 });
 
 it.each(["#section", "//example.com/image.jpg", "javascript:alert(1)", "/tmp/%ZZ.jpg"])(

@@ -300,14 +300,54 @@ describe("editing a sent agent message", () => {
     expect(send).toBeDisabled();
   });
 
-  it("keeps Enter, Shift+Enter and IME confirmation for editing", async () => {
-    const { box } = await edit();
-    fireEvent.keyDown(box, { key: "Enter" });
-    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  it("keeps Shift+Enter and IME confirmation for editing", async () => {
+    const { box, user } = await edit();
+    await user.click(box);
+    await user.keyboard("{Shift>}{Enter}{/Shift}");
     fireEvent.keyDown(box, { key: "Enter", metaKey: true, isComposing: true });
     fireEvent.keyDown(box, { key: "Enter", metaKey: true, keyCode: 229 });
     expect(ipc.rollback).not.toHaveBeenCalled();
-    expect(box).toHaveValue("Edited message");
+    expect(box).toHaveValue("Edited message\n");
+  });
+
+  it("sends an edited message with plain Enter", async () => {
+    const { box } = await edit();
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() =>
+      expect(ipc.prompt).toHaveBeenCalledWith(task.id, { text: "Edited message", files: [], images: [] }, false),
+    );
+    expect(ipc.rollback).toHaveBeenCalledExactlyOnceWith(task.id, 0);
+  });
+
+  it("opens editing by clicking the sent text and discards it with Escape", async () => {
+    render(<SessionEditor input={{ kind: "agent-session", key: task.id, data: { task: task.id } }} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Original message" }));
+    const box = screen.getAllByRole("textbox", { name: "Message" })[0]!;
+    expect(box).toHaveFocus();
+    fireEvent.change(box, { target: { value: "Unsent edit" } });
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "Original message" })).toBeVisible();
+    expect(ipc.rollback).not.toHaveBeenCalled();
+    expect(ipc.prompt).not.toHaveBeenCalled();
+  });
+
+  it("keeps a selected sent message available for copying instead of opening editing", async () => {
+    render(<SessionEditor input={{ kind: "agent-session", key: task.id, data: { task: task.id } }} />);
+    const message = await screen.findByRole("button", { name: "Original message" });
+    const range = document.createRange();
+    range.selectNodeContents(message);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    try {
+      fireEvent.click(message, { detail: 1 });
+      expect(message).toBeInTheDocument();
+      expect(selection.toString()).toBe("Original message");
+      expect(ipc.rollback).not.toHaveBeenCalled();
+    } finally {
+      selection.removeAllRanges();
+    }
   });
 
   it("keeps the draft and shows a rollback failure beside it", async () => {

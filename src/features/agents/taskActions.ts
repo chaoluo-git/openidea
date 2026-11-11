@@ -10,6 +10,8 @@ import {
   unarchiveTask,
   deleteTask,
   dockTask,
+  closeDockedTab,
+  reorderDockedTab,
   forkTask,
   loadEntries,
   openTask,
@@ -73,6 +75,26 @@ async function confirmDelete(tasks: AgentTask[]) {
 }
 
 export const taskActions: Action[] = [
+  {
+    id: "agents.closeSessionTab",
+    title: "Close Session Tab",
+    category: "Agents",
+    hidden: true,
+    run: ({ arg }) => {
+      if (typeof arg === "string") closeDockedTab(arg);
+    },
+  },
+  {
+    id: "agents.reorderSessionTab",
+    title: "Reorder Session Tabs",
+    category: "Agents",
+    hidden: true,
+    run: ({ arg }) => {
+      const target = arg as { task?: unknown; index?: unknown } | undefined;
+      if (typeof target?.task === "string" && typeof target.index === "number")
+        reorderDockedTab(target.task, target.index);
+    },
+  },
   {
     id: "agents.retryConversation",
     title: "Retry Loading Conversation",

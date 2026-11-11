@@ -103,6 +103,7 @@ beforeEach(() => {
     error: null,
     tasks: new Map([task("one"), task("two"), task("three"), task("four")].map((t) => [t.id, t])),
     docked: null,
+    dockedTabs: [],
     homeOpen: false,
     sessionLocation: "editor",
   });

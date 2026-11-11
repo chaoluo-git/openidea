@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { findAll, findRanges, formatDuration, pathLink, quoteText, withQuote } from "./conversation";
+import {
+  fileHref,
+  findAll,
+  findRanges,
+  formatDuration,
+  pathLink,
+  pathHref,
+  quoteText,
+  withQuote,
+} from "./conversation";
 
 describe("quoting", () => {
   it("quotes each line and leaves a line to type on", () => {
@@ -18,7 +27,16 @@ describe("pathLink", () => {
     expect(pathLink("./src/main.rs:12", cwd)).toEqual({ path: "/repo/src/main.rs", line: 11 });
     expect(pathLink("a/b.ts:3:5", cwd)).toEqual({ path: "/repo/a/b.ts", line: 2, col: 4 });
     expect(pathLink("Cargo.toml", cwd)).toEqual({ path: "/repo/Cargo.toml" });
+    expect(pathLink("reference.txt:12:3", cwd)).toEqual({ path: "/repo/reference.txt", line: 11, col: 2 });
     expect(pathLink("/abs/x.py#L7", cwd)).toEqual({ path: "/abs/x.py", line: 6 });
+    expect(pathLink("../docs/说明.md#L7C3-L9", cwd)).toEqual({ path: "/repo/../docs/说明.md", line: 6, col: 2 });
+    expect(pathLink("/tmp/My Project/README.md:12:5", cwd)).toEqual({
+      path: "/tmp/My Project/README.md",
+      line: 11,
+      col: 4,
+    });
+    expect(pathLink(".gitignore", cwd)).toEqual({ path: "/repo/.gitignore" });
+    expect(pathLink("Dockerfile", cwd)).toEqual({ path: "/repo/Dockerfile" });
   });
   it("ignores code that isn't a path", () => {
     for (const t of [
@@ -34,6 +52,27 @@ describe("pathLink", () => {
     ]) {
       expect(pathLink(t, cwd)).toBeNull();
     }
+  });
+});
+
+describe("file hrefs", () => {
+  it("resolves local file URLs and preserves encoded filenames and positions", () => {
+    const link = { path: "/tmp/设计 #1.md", line: 11, col: 4 };
+    expect(fileHref("file:///tmp/%E8%AE%BE%E8%AE%A1%20%231.md#L12C5", "/repo")).toEqual(link);
+    expect(fileHref(pathHref(link), "/repo")).toEqual(link);
+    expect(fileHref("file://localhost/tmp/main.ts:2", "/repo")).toEqual({ path: "/tmp/main.ts", line: 1 });
+  });
+  it.each([
+    "file://remote/tmp/a.ts",
+    "file:///tmp/a.ts?x=1",
+    "javascript:alert(1)",
+    "//remote/a.ts",
+    "/tmp/a.ts:0",
+    "/tmp/a.ts:99999999999999999999",
+    "/tmp/a%00.ts",
+    "/tmp/%ZZ.ts",
+  ])("rejects unsupported references: %s", (href) => {
+    expect(fileHref(href, "/repo")).toBeNull();
   });
 });
 
