@@ -7,6 +7,11 @@
   "name": "Harbor Night",
   "kind": "dark",
   "tokens": {
+    // Agent code
+    "--agent-code-keyword": "var(--syn-keyword)",
+    "--agent-code-string": "var(--syn-string)",
+    "--agent-code-comment": "var(--syn-comment)",
+
     // Surfaces
     "--bg-app": "#14171c",
     "--bg-elev": "#1b2027",

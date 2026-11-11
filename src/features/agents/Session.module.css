@@ -1,5 +1,5 @@
 .session {
-  --session-content-width: var(--agent-conversation-width);
+  --session-content-width: min(var(--agent-conversation-width), 84cqi);
   --session-card-width: 80%;
   flex: 1;
   min-height: 0;
@@ -249,6 +249,10 @@
   width: 100%;
 }
 @container (max-width: 640px) {
+  .stream,
+  .composerArea {
+    --session-content-width: var(--agent-conversation-width);
+  }
   .stream {
     --session-card-width: 96%;
   }
@@ -356,6 +360,8 @@
   padding: 6px 8px;
   resize: vertical;
   font: inherit;
+  font-size: var(--fs-input-large);
+  line-height: 1.6;
   color: var(--fg-strong);
   background: var(--bg-input);
   border: 1px solid var(--accent);
@@ -384,6 +390,24 @@
   max-width: 100%;
   line-height: 1.6;
   overflow-wrap: anywhere;
+}
+.messageCode {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.messageCode :global(code) {
+  font: inherit;
+}
+.codeBlock,
+.messageCode {
+  --syn-keyword: var(--agent-code-keyword);
+  --syn-string: var(--agent-code-string);
+  --syn-comment: var(--agent-code-comment);
+  --syn-comment-style: normal;
 }
 .markdown :global(p) {
   margin: 0 0 8px;
@@ -424,6 +448,7 @@
 .codeBlock > :global(pre) {
   margin: 0;
   border-radius: 0 0 var(--radius-popup-large) var(--radius-popup-large);
+  background: var(--bg-app);
 }
 .codeBlock[data-wrapped] > :global(pre) {
   white-space: pre-wrap;

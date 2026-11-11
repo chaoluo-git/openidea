@@ -90,6 +90,17 @@ describe("theme tokens", () => {
     expect(failures(light, soft, ["--bg-app", "--bg-current-line", "--bg-elev"], 3)).toEqual([]);
   });
 
+  it("light chat code stays readable in replies and sent message bubbles", () => {
+    expect(
+      failures(
+        light,
+        ["--agent-code-keyword", "--agent-code-string", "--agent-code-comment"],
+        ["--bg-app", "--bg-hover"],
+        4.5,
+      ),
+    ).toEqual([]);
+  });
+
   it("light status / VCS colours are readable", () => {
     expect(failures(light, [...STATUS, ...VCS_TEXT], LIGHT_STRONG_SURFACES, 4.5)).toEqual([]);
     expect(failures(light, [...STATUS, ...VCS_TEXT], ["--bg-elev"], 4.2)).toEqual([]);

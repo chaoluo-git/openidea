@@ -33,8 +33,8 @@
   overflow: hidden;
   padding: 10px 12px 2px;
   font: inherit;
-  font-size: var(--fs-ui);
-  line-height: 1.5;
+  font-size: var(--fs-input-large);
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--fg-strong);
@@ -55,8 +55,8 @@
   color: transparent;
   caret-color: var(--fg-strong);
   font: inherit;
-  font-size: var(--fs-ui);
-  line-height: 1.5;
+  font-size: var(--fs-input-large);
+  line-height: 1.6;
   padding: 10px 12px 2px;
   overflow-wrap: anywhere;
   -webkit-user-select: text;

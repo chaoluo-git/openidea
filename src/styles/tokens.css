@@ -19,6 +19,9 @@ html {
   --space-3: 12px;
   --space-4: 16px;
   --agent-conversation-width: 900px;
+  --agent-code-keyword: var(--syn-keyword);
+  --agent-code-string: var(--syn-string);
+  --agent-code-comment: var(--syn-comment);
   --splash-logo-size: 56px;
   --splash-bar-width: 120px;
   --splash-bar-height: 2px;
@@ -458,6 +461,11 @@ html {
  * and change bars sit below WCAG AA on white (see contrast.test.ts).
  */
 :root[data-theme="light"] {
+  /* agent code (read on white chat cards) */
+  --agent-code-keyword: #c62b3b;
+  --agent-code-string: #032f62;
+  --agent-code-comment: #59636e;
+
   /* surfaces */
   --bg-app: #ffffff;
   --bg-elev: #f7f8f9;
@@ -1189,6 +1197,9 @@ html {
   --traffic-close-pressed: #bf4942;
   --traffic-glyph: #4d0000;
   --syn-keyword: var(--palette-keyword);
+  --agent-code-keyword: var(--palette-keyword);
+  --agent-code-string: var(--palette-green);
+  --agent-code-comment: var(--palette-comment);
   --syn-string: var(--palette-green);
   --syn-type: var(--palette-type);
   --syn-function: var(--palette-blue);

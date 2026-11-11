@@ -135,6 +135,73 @@ test("fills the conversation with table and code cards", async ({ page }, info) 
 });
 
 for (const theme of ["light", "dark"] as const) {
+  test(`aligns chat typography and highlights sent SQL in ${theme}`, async ({ page, context }, info) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.setViewportSize({ width: 1500, height: 1000 });
+    const reply = await openReply(page, SQL_REPLY, undefined, theme);
+    const sql =
+      "-- 确认当前没有长事务\nSELECT pid, state FROM pg_stat_activity\nWHERE state != 'idle'\nORDER BY pid DESC;";
+    await page.evaluate(
+      async ({ id, sql }) => {
+        const path = "/src/features/agents/store.ts";
+        const store = await import(path);
+        const entries = store.useAgents.getState().entries.get(id)!;
+        store.useAgents.setState({
+          entries: new Map([[id, [{ ...entries[0], text: sql }, ...entries.slice(1)]]]),
+        });
+        store.openTaskInEditorLocation(id);
+      },
+      { id: TASK.id, sql },
+    );
+    const user = page.locator("[class*='_user_']").first();
+    await expect(user.locator(".tok-keyword").first()).toBeVisible();
+    await expect(user.locator("code")).toHaveText(sql);
+    const input = page.getByPlaceholder("Reply to the agent", { exact: true });
+    await input.fill("确认当前没有长事务");
+    const sizes = await page.evaluate(() => {
+      const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
+      const body = document.querySelector("[class*='_agentCard_']")!;
+      const column = body.closest("[class*='_agentMessage_']")!.getBoundingClientRect();
+      const panel = body.closest("[class*='_conversation_']")!.getBoundingClientRect();
+      return {
+        body: getComputedStyle(body).fontSize,
+        user: style("[class*='_user_']").fontSize,
+        userCode: style("[class*='_user_'] code").fontSize,
+        input: style("[class*='_textarea_']").fontSize,
+        mirror: style("[class*='_mirror_']").fontSize,
+        left: column.left - panel.left,
+        right: panel.right - column.right,
+        panel: panel.width,
+      };
+    });
+    expect(sizes.input).toBe(sizes.body);
+    expect(sizes.mirror).toBe(sizes.body);
+    expect(sizes.user).toBe(sizes.body);
+    expect(sizes.userCode).toBe(sizes.body);
+    expect(sizes.left).toBeGreaterThan(sizes.panel * 0.075);
+    expect(Math.abs(sizes.left - sizes.right)).toBeLessThan(2);
+    const colours = await user
+      .locator("code")
+      .evaluate((code) =>
+        [".tok-keyword", ".tok-string", ".tok-comment"].map(
+          (selector) => getComputedStyle(code.querySelector(selector)!).color,
+        ),
+      );
+    expect(new Set(colours).size).toBe(3);
+    await expect(reply.locator("pre .tok-keyword").first()).toHaveCSS("color", colours[0]!);
+    await user.hover();
+    await user.locator("..").getByRole("button", { name: "Copy", exact: true }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(sql);
+    await page.screenshot({ path: info.outputPath(`chat-typography-${theme}.png`), animations: "disabled" });
+    await user.hover();
+    await page.getByRole("button", { name: "Edit & Rerun", exact: true }).click();
+    const editor = page.locator("[class*='_editMessage_']");
+    await expect(editor).toHaveValue(sql);
+    await expect(editor).toHaveCSS("font-size", sizes.body);
+  });
+}
+
+for (const theme of ["light", "dark"] as const) {
   for (const width of [760, 1500]) {
     test(`fills a short table in ${theme} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 1000 });
