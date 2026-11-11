@@ -47,7 +47,7 @@ its SHA-256 checksum. The package supports Apple Silicon, including M4. Release
 tags, titles and asset names use the publication date in `Asia/Shanghai`, for
 example `20261111` and `OpenIDEA_20261111_aarch64.dmg`. Further releases on the
 same date use `.2`, `.3`, and so on, always above existing sequence numbers.
-Existing tags and packages are preserved. Each tag points to its exact source
+Existing tags and releases (including drafts) are preserved. Each tag points to its exact source
 commit; failed builds do not publish a release. The app's internal version stays
 in the project's SemVer format independently of the release date.
 

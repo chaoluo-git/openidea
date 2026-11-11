@@ -8,7 +8,7 @@ describe("devReleaseVersion", () => {
   });
 
   it("numbers additional releases without overwriting earlier tags", () => {
-    expect(devReleaseVersion("20261111", ["refs/tags/20261111"])).toBe("20261111.2");
+    expect(devReleaseVersion("20261111", ["refs/tags/20261111", "20261111"])).toBe("20261111.2");
     expect(devReleaseVersion("20261111", ["20261111", "20261111.2", "20261111.10"])).toBe("20261111.11");
   });
 

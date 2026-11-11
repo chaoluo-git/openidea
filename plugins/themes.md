@@ -329,7 +329,16 @@ a token.
 
 <!-- BEGIN GENERATED TOKEN REFERENCE: pnpm gen:theme-docs -->
 
-256 themeable tokens: 125 in the UI theme file, 131 in the editor colour scheme file.
+260 themeable tokens: 129 in the UI theme file, 131 in the editor colour scheme file.
+
+### Agent chat (UI theme)
+
+| Token | Islands Dark | Islands Light |
+|---|---|---|
+| `--agent-fg` | `var(--fg)` | `#333333` |
+| `--agent-code-keyword` | `var(--syn-keyword)` | `#c62b3b` |
+| `--agent-code-string` | `var(--syn-string)` | `#032f62` |
+| `--agent-code-comment` | `var(--syn-comment)` | `#59636e` |
 
 ### Surfaces (UI theme)
 

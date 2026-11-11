@@ -39,7 +39,6 @@ import {
   Icon,
   IconButton,
   Input,
-  InlineTag,
   Radio,
   SearchField,
   Spinner,
@@ -59,16 +58,7 @@ import { isImeKey } from "@/platform/ime";
 import { TaskStatusIcon } from "./AgentsView";
 import { Composer } from "./Composer";
 import { SubmitButton } from "./SubmitButton";
-import {
-  canSend,
-  costLabel,
-  emptyDraft,
-  limitLabel,
-  messageTokens,
-  retryParts,
-  usageLabel,
-  workTime,
-} from "./composerModel";
+import { canSend, costLabel, emptyDraft, limitLabel, retryParts, usageLabel, workTime } from "./composerModel";
 import { ConfigPickers } from "./ConfigPickers";
 import { findRanges, formatDuration, formatSentAt } from "./conversation";
 import { ImagePreview, imageSrc } from "./ImagePreview";
@@ -81,6 +71,7 @@ import {
   type PermissionEntry,
 } from "./permission";
 import { Markdown } from "./Markdown";
+import { MessageText } from "./MessageText";
 import { useAgentErrorText } from "./loginHint";
 import {
   branchLabel,
@@ -828,23 +819,6 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
 }
 
 type UserEntry = Extract<AgentEntry, { type: "user" }>;
-
-/** Message text with file references and skills as tags, distinct from prose. */
-function MessageText({ text }: { text: string }) {
-  return (
-    <>
-      {messageTokens(text).map((token, i) =>
-        token.kind === "text" ? (
-          <Fragment key={i}>{token.value}</Fragment>
-        ) : (
-          <InlineTag key={i} accent={token.kind === "command"}>
-            {token.value}
-          </InlineTag>
-        ),
-      )}
-    </>
-  );
-}
 
 /** When a message was sent, or when the turn behind a reply finished, and how long it took. */
 function MessageTime({
