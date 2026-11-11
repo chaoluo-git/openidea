@@ -135,16 +135,17 @@ export async function openDiff(data: DiffData, opts: { preview?: boolean; focus?
 }
 
 /**
- * Whether openVcsDiff shows diffs in the front window: the modal commit interface
- * (Settings › Version Control › Commit). Same test as commitUi.isModalCommit, which
- * this module cannot import (commitUi → remoteUi → … → diffInput is a cycle).
+ * Explicit diff placement is independent of the Commit interface. Modal Commit
+ * still needs the front viewer, otherwise an editor tab would be hidden underneath.
  */
-export const vcsDiffInFront = () => !workflowSettings().vcs.commit.nonModal;
+export const vcsDiffInFront = () => {
+  const vcs = workflowSettings().vcs;
+  return !vcs.openDiffAsTab || !vcs.commit.nonModal;
+};
 
 /**
  * Diffs the user opens (changed files, a log entry's file, Show Diff, Shelf, compare
- * with a revision, Compare actions): the modal commit interface shows them in the front
- * window (#1863), the non-modal one keeps editor tabs. Passive previews, diffs embedded
+ * with a revision, Compare actions): use the diff placement preference. Passive previews, diffs embedded
  * in dedicated surfaces (the comparison window, merge editors) and pull request files
  * (`vcs.openDiff`, with review comments) call openDiff directly.
  */

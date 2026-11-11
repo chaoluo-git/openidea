@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
 #[serde(default, rename_all = "camelCase")]
 pub struct VcsSettings {
+    /// Open explicit comparisons in editor tabs instead of the front diff viewer.
+    pub open_diff_as_tab: bool,
     /// Colour folders that contain changed files (project tree, tabs).
     pub show_dirty_directories: bool,
     /// Stop file history (Show History) after `history_limit` commits.
@@ -25,6 +27,7 @@ pub struct VcsSettings {
 impl Default for VcsSettings {
     fn default() -> Self {
         Self {
+            open_diff_as_tab: false,
             // IDEA's VcsConfiguration.SHOW_DIRTY_RECURSIVELY is off by default.
             show_dirty_directories: false,
             limit_history: true,

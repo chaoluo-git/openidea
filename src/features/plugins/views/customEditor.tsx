@@ -90,6 +90,7 @@ export function basename(path: string): string {
 
 interface Session {
   attachment: DocumentAttachment;
+  discardOnClose: boolean;
   /** Holds this tab's undo history and receives the document's changes. */
   view: EditorView;
   revision: number;
@@ -161,6 +162,7 @@ function session(key: string, path: string): Promise<Session> {
       };
       const state: Session = {
         attachment,
+        discardOnClose: false,
         view,
         revision: 0,
         listeners,
@@ -182,7 +184,7 @@ async function closeSession(key: string) {
   const state = await s;
   settled.delete(key);
   state.cancelTimer();
-  state.attachment.release();
+  state.attachment.release({ discard: state.discardOnClose });
   state.view.destroy();
 }
 
@@ -205,9 +207,14 @@ export const customEditorDocument: EditorDocumentLifecycle = {
   prepareClose: async (input) => {
     await withSession(input, (s) => s.attachment.synced());
   },
-  cancelClose: () => {},
-  discard: async () => {
-    // The document's unsaved changes go when it closes (`close` releases it).
+  cancelClose: (input) => {
+    const state = settled.get(input.key);
+    if (state) state.discardOnClose = false;
+  },
+  discard: async (input) => {
+    await withSession(input, (state) => {
+      state.discardOnClose = true;
+    });
   },
   close: (input) => closeSession(input.key),
   undo: async (input) => {

@@ -8908,6 +8908,8 @@ export type VcsRoot = {
 
 /**  Version Control (main page) and its sub-pages. */
 export type VcsSettings = {
+	/**  Open explicit comparisons in editor tabs instead of the front diff viewer. */
+	openDiffAsTab?: boolean,
 	/**  Colour folders that contain changed files (project tree, tabs). */
 	showDirtyDirectories?: boolean,
 	/**  Stop file history (Show History) after `history_limit` commits. */

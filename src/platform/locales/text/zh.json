@@ -7166,5 +7166,8 @@
   "The agent could not generate a commit message.": "Agent 无法生成提交信息。",
   "Generating the commit message timed out. Try again.": "生成提交信息超时，请重试。",
   "Open a project with selected changes first.": "请先打开项目并选择待提交的变更。",
-  "The commit selection or draft changed. Generate the message again.": "待提交内容或草稿已变化，请重新生成提交信息。"
+  "The commit selection or draft changed. Generate the message again.": "待提交内容或草稿已变化，请重新生成提交信息。",
+  "Open Diff as Editor Tab": "在编辑器标签页中打开差异",
+  "When off, comparisons open over the full work area.": "关闭后，在覆盖整个工作区的窗口中查看差异。",
+  "Could not close document": "无法关闭文档"
 }

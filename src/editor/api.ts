@@ -687,8 +687,8 @@ export interface DocumentAttachment {
    * it like any other change of the document, before this returns.
    */
   edit(changes: ChangeSpec, userEvent?: string): void;
-  /** Detach; the document closes when nothing else shows it. */
-  release(): void;
+  /** Detach; unsaved buffers remain available for Save All. `discard` requires a user-confirmed discard. */
+  release(options?: { discard?: boolean }): void;
 }
 
 export interface DocumentAttachmentOptions {

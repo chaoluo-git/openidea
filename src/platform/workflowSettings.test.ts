@@ -3,6 +3,11 @@ import { splitCommandLine } from "./commandLine";
 import { DEFAULT_WORKFLOW, validateWorkflow } from "./workflowSettings";
 
 describe("validateWorkflow", () => {
+  it("defaults to a front diff viewer and accepts an explicit editor-tab preference", () => {
+    expect(validateWorkflow(undefined).vcs.openDiffAsTab).toBe(false);
+    expect(validateWorkflow({ vcs: { openDiffAsTab: true } }).vcs.openDiffAsTab).toBe(true);
+    expect(validateWorkflow({ vcs: { openDiffAsTab: "true" } }).vcs.openDiffAsTab).toBe(false);
+  });
   it("defaults inline blame off and accepts only boolean values", () => {
     expect(DEFAULT_WORKFLOW.vcs.git.inlineBlame).toBe(false);
     expect(validateWorkflow({ vcs: { git: { inlineBlame: true } } }).vcs.git.inlineBlame).toBe(true);

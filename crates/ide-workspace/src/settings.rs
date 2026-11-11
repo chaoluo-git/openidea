@@ -461,6 +461,31 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn diff_placement_survives_reload_and_keeps_commit_interface_independent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = tmp.path().join("cfg");
+        let proj = tmp.path().join("proj");
+        std::fs::create_dir_all(proj.join(".openidea")).unwrap();
+        let store = SettingsStore::load(&cfg, Some(&proj));
+        assert!(!store.effective().vcs.open_diff_as_tab);
+        assert!(store.effective().vcs.commit.non_modal);
+
+        store.set(SettingsScope::Global, "vcs.openDiffAsTab", json!(true)).unwrap();
+        let loaded = SettingsStore::load(&cfg, Some(&proj)).effective();
+        assert!(loaded.vcs.open_diff_as_tab);
+        assert!(loaded.vcs.commit.non_modal);
+        store.set(SettingsScope::Project, "vcs.openDiffAsTab", json!(false)).unwrap();
+        assert!(!SettingsStore::load(&cfg, Some(&proj)).effective().vcs.open_diff_as_tab);
+        assert!(SettingsStore::load(&cfg, None).effective().vcs.open_diff_as_tab);
+        store.set(SettingsScope::Project, "vcs.openDiffAsTab", Json::Null).unwrap();
+        assert!(SettingsStore::load(&cfg, Some(&proj)).effective().vcs.open_diff_as_tab);
+
+        let previous = std::fs::read_to_string(cfg.join("settings.toml")).unwrap();
+        assert!(store.set(SettingsScope::Global, "vcs.openDiffAsTab", json!("true")).is_err());
+        assert_eq!(std::fs::read_to_string(cfg.join("settings.toml")).unwrap(), previous);
+    }
+
+    #[test]
     fn compose_file_choices_are_project_settings_and_survive_reload() {
         let tmp = tempfile::tempdir().unwrap();
         let cfg = tmp.path().join("cfg");

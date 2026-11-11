@@ -29,7 +29,7 @@ const openInput = vi.fn(async () => undefined);
 provideEditorService({ openInput } as never);
 /** Settings › Version Control › Commit: "Use non-modal commit interface" unticked. */
 const modal = (on: boolean) =>
-  useProject.setState({ settings: on ? ({ vcs: { commit: { nonModal: false } } } as Settings) : null });
+  useProject.setState({ settings: { vcs: { openDiffAsTab: true, commit: { nonModal: !on } } } as Settings });
 const tabPaths = () => openInput.mock.calls.map((c) => (c as unknown as [{ data: { path: string } }])[0].data.path);
 
 describe("Local Changes diff preview (#710)", () => {

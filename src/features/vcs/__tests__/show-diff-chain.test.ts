@@ -153,11 +153,18 @@ it("openVcsDiff opens the front window under the modal interface", async () => {
   expect(opened).not.toHaveBeenCalled();
 });
 
-it("openVcsDiff keeps editor tabs without the modal interface", async () => {
-  useProject.setState({ settings: null });
+it("openVcsDiff keeps editor tabs when explicitly selected", async () => {
+  useProject.setState({ settings: { vcs: { openDiffAsTab: true } } as Settings });
   await openVcsDiff({ path: "/repo/b.ts", left: { type: "rev", rev: "HEAD" }, right: { type: "worktree" } });
   expect(diffWindow).not.toHaveBeenCalled();
   expect(opened).toHaveBeenCalled();
+});
+
+it("opens the front viewer by default without changing the non-modal Commit interface", async () => {
+  useProject.setState({ settings: null });
+  await openVcsDiff({ path: "/repo/b.ts", left: { type: "rev", rev: "HEAD" }, right: { type: "worktree" } });
+  expect(diffWindow).toHaveBeenCalledOnce();
+  expect(opened).not.toHaveBeenCalled();
 });
 
 it("Compare with Local opens the front window under the modal interface", async () => {

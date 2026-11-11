@@ -14,7 +14,7 @@ const openInput = vi.fn(async () => undefined);
 provideEditorService({ openInput } as never);
 /** Settings › Version Control › Commit: "Use non-modal commit interface" unticked. */
 const modal = (on: boolean) =>
-  useProject.setState({ settings: on ? ({ vcs: { commit: { nonModal: false } } } as Settings) : null });
+  useProject.setState({ settings: { vcs: { openDiffAsTab: true, commit: { nonModal: !on } } } as Settings });
 
 let unregister: () => void;
 beforeAll(() => (unregister = registerCompareActions()));
@@ -45,7 +45,7 @@ it("opens Compare actions in the front window under the modal interface", async 
   expect(openInput).not.toHaveBeenCalled();
 });
 
-it("keeps Compare actions in editor tabs with the non-modal interface", async () => {
+it("keeps Compare actions in editor tabs when the placement preference is enabled", async () => {
   await getAction("diff.compareTexts")!.run({ arg: texts, ctx: {} });
   expect(openInput).toHaveBeenCalledTimes(1);
   expect(front.diff).not.toHaveBeenCalled();

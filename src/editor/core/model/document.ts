@@ -221,6 +221,8 @@ export class DocModel {
   /** Bumped by every change (local or remote). */
   changeCounter = 0;
   closed = false;
+  /** Last view detached while dirty; keep the buffer until it can be saved. */
+  detachedDirty = false;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private saving: Promise<void> = Promise.resolve();
   private meta: DocMeta;
@@ -307,6 +309,7 @@ export class DocModel {
   }
 
   addSlot(slot: EditorSlot) {
+    this.detachedDirty = false;
     this.slots.add(slot);
     if (this.highlights?.counter === this.changeCounter)
       slot.reconfigure([setSyntaxHighlights.of(this.highlights.value)]);
@@ -321,12 +324,13 @@ export class DocModel {
   }
 
   attach(target: DocAttachmentTarget) {
+    this.detachedDirty = false;
     this.attachments.add(target);
   }
 
-  detach(target: DocAttachmentTarget) {
+  detach(target: DocAttachmentTarget, discard = false) {
     this.attachments.delete(target);
-    if (!this.inUse()) this.manager.release(this);
+    if (!this.inUse()) this.manager.release(this, discard);
   }
 
   /** Shown by a tab or an attached view. */
@@ -642,7 +646,12 @@ export class DocModel {
       this.setMeta({ dirty: false });
       _emitEditorEvent({ type: "docSaved", doc: this.doc, path: this.path });
     };
-    this.saving = this.saving.then(run, run);
+    this.saving = this.saving.then(run, run).then(() => {
+      if (this.detachedDirty && !this.meta.dirty) {
+        this.detachedDirty = false;
+        this.manager.release(this);
+      }
+    });
     return this.saving;
   }
 
@@ -755,22 +764,33 @@ export class DocumentManager {
   }
 
   /** Called when the last slot of a model goes away. */
-  release(model: DocModel) {
+  release(model: DocModel, discard = false) {
     if (model.closed || model.inUse()) return;
+    const discardedVersion = model.changeCounter;
     // Defer so that "close tab + reopen in split" in one tick keeps the model.
     queueMicrotask(async () => {
       if (model.inUse() || model.closed) return;
-      const files = this.settings()?.files;
-      if (files?.autoSave !== false && model.getMeta().dirty) {
-        try {
-          await model.save("auto");
-        } catch (e) {
-          console.warn(`autosave of ${model.path} failed`, e);
-        }
+      try {
+        const files = this.settings()?.files;
+        if (!discard && files?.autoSave !== false && model.getMeta().dirty) await model.save("auto");
+        if (model.inUse() || model.closed) return;
+        await model.sync.whenIdle();
+      } catch (e) {
+        if (model.closed) return;
+        model.detachedDirty = true;
+        this.notify({
+          level: "error",
+          title: "Could not close document",
+          body: `${model.path}: ${e instanceof Error ? e.message : String(e)}`,
+        });
+        return;
       }
-      if (model.inUse()) return;
-      await model.sync.whenIdle();
-      if (model.inUse()) return;
+      if (model.inUse() || model.closed) return;
+      // Leaving a preview must not discard unsaved edits or a failed autosave.
+      if (model.getMeta().dirty && !(discard && model.changeCounter === discardedVersion)) {
+        model.detachedDirty = true;
+        return;
+      }
       model.dispose();
       this.byPath.delete(model.path);
       this.byId.delete(model.doc);

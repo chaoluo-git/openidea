@@ -36,6 +36,10 @@ test("Compare With… compares against a file picked in the browser", async ({ w
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("menuitem", { name: /^Compare With…/ }).click();
   await (await chooser).setFiles({ name: "other.md", mimeType: "text/markdown", buffer: Buffer.from("other text\n") });
-  const tabs = page.getByRole("tablist", { name: "Editor tabs" });
-  await expect(tabs.getByRole("tab", { name: /other\.md/ })).toBeVisible({ timeout: 15_000 });
+  const diff = page.getByRole("dialog", { name: "README.md (other.md ↔ README.md)", exact: true });
+  await expect(diff).toBeVisible({ timeout: 15_000 });
+  await expect(diff).toHaveAttribute("data-maximized", "true");
+  await expect(diff.getByRole("region", { name: "README.md (other.md ↔ README.md)", exact: true })).toContainText(
+    "other text",
+  );
 });

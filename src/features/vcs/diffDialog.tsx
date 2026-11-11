@@ -1,6 +1,5 @@
 /**
- * The diff "window" of the modal commit interface (#1863): diffs open in front, not in
- * an editor tab that the modal Commit dialog would hide. A `Dialog` stacked on
+ * The front diff viewer: explicit comparisons open over the work area. A `Dialog` stacked on
  * `openDialog`'s stack keeps whatever is underneath (the Commit dialog and its message,
  * selection and options, a comparison list) mounted; Esc / the close button / the
  * close-tab chord return to it. F7 / Shift+F7 and the diff navigation actions move
@@ -8,14 +7,16 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { bindingsFor, normalizeBinding, registerKeyClaim } from "@/platform/keymap";
-import { Dialog } from "@/ui";
+import { Dialog, IconButton } from "@/ui";
 import type { EditorInput } from "@/workbench/contributions";
 import { DiffEditor } from "./DiffEditor";
 import { diffInput, diffTitle, type DiffData } from "./diffInput";
 import { openDialog } from "./dialogs";
 import { GitMergeDiff } from "./GitMergeDiff";
+import styles from "./DiffDialog.module.css";
 
 const SIZE_KEY = "openidea.vcs.diffDialogSize";
+const MAXIMIZED_KEY = "openidea.vcs.diffDialogMaximized";
 
 /** The diff window's last size (#2328); null on first run, clamped to the window by Dialog. */
 export function loadDiffDialogSize(): { w: number; h: number } | null {
@@ -72,6 +73,22 @@ export function openMergeDiffDialog(input: EditorInput): () => void {
 
 function FrontWindow({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const body = useRef<HTMLDivElement>(null);
+  const [maximized, setMaximized] = useState(() => {
+    try {
+      return localStorage.getItem(MAXIMIZED_KEY) !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const toggleMaximized = () => {
+    const next = !maximized;
+    setMaximized(next);
+    try {
+      localStorage.setItem(MAXIMIZED_KEY, String(next));
+    } catch {
+      // The viewer still works when storage is unavailable.
+    }
+  };
   // The size the user last resized the diff window to (#2328), else the usual default.
   const [initialSize] = useState(
     () =>
@@ -97,6 +114,7 @@ function FrontWindow({ title, onClose, children }: { title: string; onClose: () 
     <Dialog
       open
       title={title}
+      className={styles.window}
       onClose={onClose}
       width="calc(100vw - 64px)"
       resizable="both"
@@ -104,13 +122,18 @@ function FrontWindow({ title, onClose, children }: { title: string; onClose: () 
       minHeight={280}
       initialSize={initialSize}
       onResized={saveDiffDialogSize}
+      maximized={maximized}
+      onToggleMaximize={toggleMaximized}
+      footerStart={
+        <IconButton
+          icon={maximized ? "minimize" : "maximize"}
+          title={maximized ? "Restore Size" : "Zoom"}
+          onClick={toggleMaximized}
+        />
+      }
       buttons={[{ label: "Close", role: "cancel" }]}
     >
-      <div
-        ref={body}
-        className="vcsDiffDialogBody"
-        style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
-      >
+      <div ref={body} className={styles.body}>
         {children}
       </div>
     </Dialog>

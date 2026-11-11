@@ -836,5 +836,8 @@
   "Generating the commit message timed out. Try again.": "Generating the commit message timed out. Try again.",
   "Open a project with selected changes first.": "Open a project with selected changes first.",
   "The commit selection or draft changed. Generate the message again.": "The commit selection or draft changed. Generate the message again.",
-  "Generate": "Generate"
+  "Generate": "Generate",
+  "Open Diff as Editor Tab": "Open Diff as Editor Tab",
+  "When off, comparisons open over the full work area.": "When off, comparisons open over the full work area.",
+  "Could not close document": "Could not close document"
 }

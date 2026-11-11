@@ -1142,6 +1142,27 @@ export function DiffEditor({
             onClick={jumpToSource}
           />
         )}
+        {data.chain && data.chain.length > 1 && (
+          <>
+            <span className={styles.sep} />
+            <IconButton
+              icon="arrow-left"
+              title="Compare Previous File"
+              shortcut={shortcutLabel("diff.prevFile")}
+              size="small"
+              disabled={!chainNeighbour(data, -1)}
+              onClick={() => file(-1)}
+            />
+            <IconButton
+              icon="arrow-right"
+              title="Compare Next File"
+              shortcut={shortcutLabel("diff.nextFile")}
+              size="small"
+              disabled={!chainNeighbour(data, 1)}
+              onClick={() => file(1)}
+            />
+          </>
+        )}
         <span className={styles.sep} />
         <IconButton
           icon="diff-side-by-side"

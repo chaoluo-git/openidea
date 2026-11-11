@@ -3,7 +3,7 @@
  * parts also make the Git window's Local Changes / Stash tabs and the Commit dialog.
  */
 import { writeClipboardText } from "@/platform/clipboard";
-import { useWorkflowSettings } from "@/platform/workflowSettings";
+import { useWorkflowSettings, workflowSettings } from "@/platform/workflowSettings";
 import { formatBinding, isMacHost, macStroke, normalizeBinding, shortcutLabel, strokeOf } from "@/platform/keymap";
 import {
   useCallback,
@@ -209,9 +209,7 @@ const bottomLeft = (el: HTMLElement) => {
 
 /**
  * Opens a file's diff; F7 continues through the other files of its group, in tree
- * order. Where depends on the commit interface setting (openVcsDiff): a preview editor
- * tab, or under the modal interface the front diff window, as an editor tab would sit
- * behind the modal Commit dialog (#1863).
+ * order. The diff placement preference chooses a front viewer or preview editor tab.
  */
 function openNode(n: ChangeNode, roots: readonly ChangeNode[]) {
   if (n.type !== "file" || !n.path) return;
@@ -312,7 +310,7 @@ export function nodeMenu(
       run: () => commitFiles(paths),
     },
     { kind: "separator" },
-    // Under the modal interface the node itself, like double-click, in the front window.
+    // Use the selected node's chain, just like double-click, in the front viewer.
     vcsDiffInFront() && opts?.roots && first
       ? {
           label: "Show Diff",
@@ -321,6 +319,19 @@ export function nodeMenu(
           run: () => openNode(first, opts.roots!),
         }
       : { kind: "action", action: "vcs.showDiff", arg: first?.path },
+    ...(workflowSettings().vcs.commit.nonModal && opts?.roots && first
+      ? [
+          {
+            label: "Show Diff in a New Tab",
+            icon: "diff",
+            run: () =>
+              void editorService().openInput(diffInput(changeNodeDiffData(opts.roots!, first)), {
+                preview: false,
+                focus: true,
+              }),
+          },
+        ]
+      : []),
     {
       label: "Jump to Source",
       icon: "external-link",

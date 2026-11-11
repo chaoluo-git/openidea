@@ -13,6 +13,17 @@
   align-items: flex-start;
   padding-top: 10vh;
 }
+.maximizedBackdrop {
+  padding: 0;
+}
+.maximizedBackdrop.belowTitleBar {
+  padding-top: var(--h-titlebar);
+}
+.dialog.maximized {
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+}
 .dialog {
   display: flex;
   flex-direction: column;
@@ -123,6 +134,10 @@
 .lightClose {
   background: var(--traffic-close);
   box-shadow: inset 0 0 0 0.5px var(--traffic-close-border);
+}
+.lightZoom {
+  background: var(--success);
+  cursor: pointer;
 }
 [data-inactive] .lightClose {
   background: var(--traffic-off);
