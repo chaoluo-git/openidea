@@ -16,6 +16,9 @@ export const test = base.extend<{ workbench: Page }>({
     await page.goto("/");
     await expect(page.getByRole("tree", { name: "Project" })).toBeVisible();
     await expect(page.getByRole("treeitem", { name: /acme-api/ })).toBeVisible();
+    // The tree mounts behind the startup splash; raw pointer gestures need the
+    // workbench to receive input, just as locator clicks wait for automatically.
+    await expect(page.locator("#splash")).toBeHidden();
     await provide(page);
     expect(errors, "uncaught page errors").toEqual([]);
   },

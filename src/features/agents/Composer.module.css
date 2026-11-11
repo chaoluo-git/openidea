@@ -320,6 +320,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* The effort is in the model popup: the button keeps the model's name readable. */
+  .chipDetail {
+    display: none;
+  }
   .inlineSetting {
     display: none;
   }

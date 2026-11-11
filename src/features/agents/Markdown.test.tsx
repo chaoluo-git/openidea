@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { resetMermaidForTests } from "../viewers/markdown/mermaid";
 import { StrictMode } from "react";
-import { Markdown } from "./Markdown";
+import { Markdown, markdownBlocks, markdownHtml } from "./Markdown";
 import { registerActions } from "@/platform/actions";
 import { codeBlockActions } from "./codeBlockActions";
 
@@ -23,7 +23,9 @@ vi.mock("@/platform/openUrl", () => ({ openExternalUrl }));
 vi.mock("@/platform/clipboard", () => ({ writeClipboardText: copyText }));
 
 const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn() }));
-vi.mock("mermaid", () => ({ default: { initialize: mermaid.initialize, render: mermaid.render } }));
+vi.mock("mermaid", () => ({
+  default: { initialize: mermaid.initialize, render: mermaid.render },
+}));
 
 const DIAGRAM = "flowchart TD\n    A-->B";
 const FENCE = `\`\`\`mermaid\n${DIAGRAM}\n\`\`\`\n`;
@@ -130,6 +132,21 @@ it("preserves each code block's wrap preference when the reply streams", async (
   expect(updated[1]).toHaveAttribute("aria-pressed", "false");
   fireEvent.click(updated[0]!);
   expect(updated[0]).toHaveAttribute("aria-pressed", "false");
+});
+
+it("keeps wrapping scoped to the changing code block while preserving finished blocks", async () => {
+  const prefix = "```sql\nSELECT 1;\n```\n\n";
+  const { container, rerender } = render(<Markdown text={`${prefix}\`\`\`ts\nconst value =`} cwd="/repo" />);
+  const finished = container.querySelector("pre")!;
+  fireEvent.click(screen.getAllByRole("button", { name: "Use Soft Wraps" })[1]!);
+
+  rerender(<Markdown text={`${prefix}\`\`\`ts\nconst value = 2;\n\`\`\``} cwd="/repo" />);
+  expect(container.querySelector("pre")).toBe(finished);
+  const wraps = screen.getAllByRole("button", { name: "Use Soft Wraps" });
+  expect(wraps[0]).toHaveAttribute("aria-pressed", "false");
+  expect(wraps[1]).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getAllByRole("button", { name: "Copy Code" })[1]!);
+  await waitFor(() => expect(copyText).toHaveBeenLastCalledWith("const value = 2;"));
 });
 
 it.each([
@@ -286,7 +303,11 @@ it("reuses image reads while a reply streams, but reads again for another messag
 });
 
 it("reports read failure and retries on the next render", async () => {
-  readImage.mockRejectedValueOnce({ kind: "io", message: "missing", data: null });
+  readImage.mockRejectedValueOnce({
+    kind: "io",
+    message: "missing",
+    data: null,
+  });
   const { rerender } = render(<Markdown text="![QR](/tmp/missing.png)" cwd="/repo" />);
   await waitFor(() => expect(screen.getByRole("img")).toHaveAttribute("alt", "Unable to load image: /tmp/missing.png"));
   expect(screen.getByRole("img")).not.toHaveAttribute("src");
@@ -388,5 +409,45 @@ describe("mermaid diagrams in a reply", () => {
     rerender(<Markdown text={`${FENCE}\n\nDone.`} cwd="/repo" onDiagramDrawn={onDiagramDrawn} />);
     await act(async () => {});
     expect(onDiagramDrawn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("streamed replies", () => {
+  it("cuts a reply into blocks that join back into it", () => {
+    const text = "# Plan\n\nFirst *one*.\n\n- a\n- b\n\n```ts\nconst a = 1;\n```\n\nTail";
+    const blocks = markdownBlocks(text);
+    expect(blocks.join("")).toBe(text);
+    expect(blocks).toHaveLength(5);
+    expect(blocks.map((b) => markdownHtml(b)).join("")).toBe(markdownHtml(text));
+    expect(markdownBlocks("See [docs][d].\n\n[d]: https://example.com")).toHaveLength(1);
+  });
+
+  it("renders an HTML block that wraps Markdown whole", () => {
+    const text = "<details>\n<summary>Log</summary>\n\ntext\n\n</details>";
+    expect(markdownBlocks(text)).toEqual([text]);
+    const { container } = render(<Markdown text={text} cwd="/repo" />);
+    expect(container.querySelector("details p")?.textContent).toBe("text");
+  });
+
+  it("cuts only what streamed on after the blocks that ended", () => {
+    const before = markdownBlocks("One.\n\nTwo.\n\nThr");
+    const after = markdownBlocks("One.\n\nTwo.\n\nThree.\n\n- a", before);
+    expect(after).toEqual(["One.\n\n", "Two.\n\n", "Three.\n\n", "- a"]);
+    expect(after[0]).toBe(before[0]);
+    expect(markdownBlocks("Other.\n\nTwo.\n\nThree.", before)).toEqual(["Other.\n\n", "Two.\n\n", "Three."]);
+  });
+
+  it("keeps the blocks a chunk didn't change", () => {
+    const head = "Intro paragraph.\n\n```ts\nconst a = 1;\n```\n\n";
+    const { container, rerender } = render(<Markdown text={`${head}Half a sen`} cwd="/repo" />);
+    const intro = container.querySelector("p")!;
+    const code = container.querySelector("pre")!;
+    rerender(<Markdown text={`${head}Half a sentence, then more.`} cwd="/repo" />);
+    expect(container.querySelector("p")).toBe(intro);
+    expect(container.querySelector("pre")).toBe(code);
+    expect(container.querySelectorAll("p")[1]!.textContent).toBe("Half a sentence, then more.");
+    expect(screen.getAllByRole("button", { name: "Copy Code" })).toHaveLength(1);
+    rerender(<Markdown text="Something else" cwd="/repo" />);
+    expect(container.textContent?.trim()).toBe("Something else");
   });
 });
