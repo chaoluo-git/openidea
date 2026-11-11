@@ -63,6 +63,31 @@ async function openChat(
   return page.locator("[class*='_stream_']:visible");
 }
 
+test("fills the conversation width with the composer while keeping prose readable", async ({ page }, info) => {
+  const stream = await openChat(page);
+  const composer = page.getByRole("textbox", { name: "Message", exact: true });
+  for (const width of [1400, 800]) {
+    await page.setViewportSize({ width, height: 900 });
+    const bounds = await composer.evaluate((input) => {
+      const area = input.closest("[class*='_composerArea_']")!;
+      const conversation = area.parentElement!;
+      const card = input.closest("[class*='_composer_']")!;
+      return {
+        conversation: conversation.getBoundingClientRect().toJSON(),
+        composer: card.getBoundingClientRect().toJSON(),
+      };
+    });
+    expect(bounds.composer.width).toBeGreaterThan(bounds.conversation.width * 0.94);
+    expect(bounds.composer.x).toBeGreaterThanOrEqual(bounds.conversation.x);
+    expect(bounds.composer.right).toBeLessThanOrEqual(bounds.conversation.right);
+    if (width === 1400) {
+      const prose = (await stream.locator("[class*='_agentCard_']").first().boundingBox())!;
+      expect(prose.width).toBeLessThan(bounds.composer.width * 0.9);
+    }
+    await page.screenshot({ path: info.outputPath(`composer-width-${width}.png`) });
+  }
+});
+
 test("clicks sent text to edit, preserves selection, and applies Enter, Shift+Enter and Escape", async ({ page }) => {
   await openChat(page, [
     { ...user, text: "Previous request" },

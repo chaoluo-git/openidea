@@ -285,8 +285,7 @@
   width: 100%;
 }
 @container (max-width: 640px) {
-  .stream,
-  .composerArea {
+  .stream {
     --session-content-width: var(--agent-conversation-width);
   }
   .stream {
@@ -1039,7 +1038,6 @@
   gap: 6px;
   align-self: center;
   width: 100%;
-  max-width: calc(var(--session-content-width) + var(--space-3) * 2);
   box-sizing: border-box;
   padding: var(--space-2) var(--space-3) var(--space-4);
 }
