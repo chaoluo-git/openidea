@@ -46,6 +46,8 @@ jobs:
       # Dev packages are installed manually. Empty endpoints prevent the fork
       # from replacing itself with an upstream release through auto-update.
       - name: Build macOS arm64
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
         run: >-
           pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg
           --config '{"bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]}}}'
@@ -56,7 +58,9 @@ jobs:
           version="$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).version')"
           tag="dev-v${version}-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           bundle="target/aarch64-apple-darwin/release/bundle/dmg/OpenIDEA_${version}_aarch64.dmg"
-          test "$(lipo -archs target/aarch64-apple-darwin/release/openidea)" = arm64
+          app="target/aarch64-apple-darwin/release/bundle/macos/OpenIDEA.app"
+          test "$(lipo -archs "$app/Contents/MacOS/openidea")" = arm64
+          codesign --verify --deep --strict "$app"
           hdiutil verify "$bundle"
           mkdir -p release-assets
           cp "$bundle" release-assets/
@@ -81,6 +85,7 @@ jobs:
 
           - macOS arm64: Apple Silicon M1/M2/M3/M4 and later.
           - Download the DMG and install it manually. SHA-256 is provided alongside it.
+          - The application bundle has an ad-hoc signature and passes resource integrity verification.
           - This development build has no Developer ID signature or Apple notarization.
           - Automatic updates are disabled in this package; install later dev releases manually.
 
