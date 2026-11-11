@@ -158,6 +158,44 @@ beforeEach(() => {
 });
 
 describe("conversation rows", () => {
+  it("keeps a running shell visible when a later subagent card arrives", async () => {
+    const entries: AgentEntry[] = [
+      { type: "thought", text: "Inspect modules" },
+      tool("shell", { kind: "execute", status: "running", output: "Running shell output" }),
+      subagent,
+    ];
+    useAgents.setState({
+      tasks: new Map([["A", { ...task("A"), status: "running" }]]),
+      entries: new Map([["A", entries]]),
+    });
+    render(<SessionEditor input={input("A")} />);
+    const summary = await screen.findByText("Ran 1 command", { exact: true });
+    expect(summary.closest("details")).toHaveAttribute("open");
+    expect(screen.getByText("Running shell output")).toBeVisible();
+  });
+  it("keeps the live activity visible when a provider appends a redundant file acknowledgement", async () => {
+    const path = "/project/generated.py";
+    const entries: AgentEntry[] = [
+      tool("read"),
+      tool("create", { kind: "edit", diffs: [{ path, added: 2, removed: 0 }] }),
+      { type: "agent", text: `Info: ${path}` },
+    ];
+    useAgents.setState({
+      tasks: new Map([["A", { ...task("A"), status: "running" }]]),
+      entries: new Map([["A", entries]]),
+    });
+    render(<SessionEditor input={input("A")} />);
+    expect(await screen.findByText("generated.py")).toBeVisible();
+    expect(screen.queryByText(`Info: ${path}`)).toBeNull();
+  });
+
+  it("honors the setting to expand completed tool output", async () => {
+    useProject.setState({ settings: { agents: { expandToolOutput: true } } as never });
+    useAgents.setState({ entries: new Map([["A", [tool("result", { output: "Full completed output" })]]]) });
+    render(<SessionEditor input={input("A")} />);
+    expect(await screen.findByText("Full completed output")).toBeVisible();
+  });
+
   it("keeps authors above messages and their folded work with matching icon-only actions", async () => {
     useProject.setState({ settings: { agents: { foldTurns: false } } as never });
     const user = (text: string): AgentEntry => ({
@@ -436,6 +474,10 @@ describe("opened runs", () => {
     );
     const turn = screen.getByText("Read 2 files · 1 message").closest("details")!;
     expect(turn).toHaveClass(styles.turnFold!);
+    // Finishing a turn keeps the work being read visible instead of folding it away.
+    expect(turn.open).toBe(true);
+    expect(screen.getByText("Read 2 files").closest("details")!.open).toBe(true);
+    toggle(turn);
     toggle(turn);
     expect(screen.getByText("Read 2 files").closest("details")!.open).toBe(true);
   });
@@ -509,6 +551,68 @@ describe("the conversation selection", () => {
 });
 
 describe("scrolling", () => {
+  it("pauses both scrollers while a thought is read, including downward scrolling inside its activity", async () => {
+    const transcript: AgentEntry[] = [
+      { type: "thought", text: "Read this reasoning" },
+      tool("live", { status: "running" }),
+    ];
+    useAgents.setState({
+      entries: new Map([["A", transcript]]),
+      tasks: new Map(useAgents.getState().tasks).set("A", { ...task("A"), status: "running" }),
+    });
+    render(<SessionEditor input={input("A")} />);
+    const summary = await screen.findByText("Read this reasoning");
+    const el = stream();
+    const body = el.querySelector<HTMLDivElement>(`.${styles.processBody}`)!;
+    let height = 1000;
+    let innerHeight = 300;
+    Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => height });
+    Object.defineProperty(el, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(body, "scrollHeight", { configurable: true, get: () => innerHeight });
+    Object.defineProperty(body, "clientHeight", { configurable: true, value: 120 });
+    body.style.overflowY = "auto";
+    el.scrollTop = 600;
+    body.scrollTop = 180;
+    fireEvent.scroll(el);
+    fireEvent.scroll(body);
+    fireEvent.click(summary);
+    const thought = summary.closest("details")!;
+    thought.open = true;
+    fireEvent(thought, new Event("toggle"));
+    height = 1200;
+    innerHeight = 600;
+    act(() => useAgents.setState({ entries: new Map([["A", [...transcript, tool("next", { status: "running" })]]]) }));
+    expect(el.scrollTop).toBe(600);
+    expect(body.scrollTop).toBe(180);
+    expect(screen.getByRole("button", { name: "Scroll to bottom" })).toBeInTheDocument();
+    fireEvent.wheel(body, { deltaY: 20 });
+    body.scrollTop = 200;
+    fireEvent.scroll(body);
+    height = 1400;
+    innerHeight = 700;
+    act(() =>
+      useAgents.setState({ entries: new Map([["A", [...transcript, tool("another", { status: "running" })]]]) }),
+    );
+    expect(el.scrollTop).toBe(600);
+    expect(body.scrollTop).toBe(200);
+  });
+
+  it("keeps a thought open when new tools regroup its row", async () => {
+    const thought: AgentEntry = { type: "thought", text: "Reasoning being read" };
+    useAgents.setState({ entries: new Map([["A", [thought]]]) });
+    render(<SessionEditor input={input("A")} />);
+    const summary = await screen.findByText("Reasoning being read");
+    fireEvent.click(summary);
+    const details = summary.closest("details")!;
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    act(() => useAgents.setState({ entries: new Map([["A", [thought, tool("next")]]]) }));
+    const regrouped = stream().querySelector<HTMLDetailsElement>(`.${styles.thought}`)!;
+    expect(regrouped.open).toBe(true);
+    expect(regrouped.querySelector(`.${styles.thoughtBody}`)).not.toBeNull();
+    expect(stream().querySelector<HTMLDetailsElement>(`.${styles.processRun}`)!.open).toBe(true);
+  });
+
   it("returns to the end when the user sends a message while scrolled up", async () => {
     const reply = { type: "agent", text: "Initial reply" } as AgentEntry;
     useAgents.setState({ entries: new Map([["A", [reply]]]) });
@@ -633,7 +737,10 @@ describe("scrolling", () => {
   });
 
   it("defers prepending during a pointer drag and preserves the first row's viewport position", async () => {
-    const entries = Array.from({ length: 90 }, (_, i): AgentEntry => ({ type: "agent", text: `History ${i}` }));
+    const entries = Array.from({ length: 90 }, (_, i): Extract<AgentEntry, { type: "agent" }> => ({
+      type: "agent",
+      text: `History ${i}`,
+    }));
     useAgents.setState({ entries: new Map([["A", entries]]) });
     // Mount hidden so the initial batch hasn't yet restored the bottom offset.
     const view = render(

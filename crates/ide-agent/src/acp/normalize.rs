@@ -246,20 +246,23 @@ fn v1_diffs(diff: &Value) -> Vec<Value> {
             let path = str_of(change, "path")?;
             // Patch paths can be relative to the repository.
             let same = |p: &str| !p.is_empty() && (p == path || path.ends_with(&format!("/{p}")));
-            let (old, new) =
-                files.iter().find(|f| same(&f.0)).map(|f| (f.1.as_str(), f.2.as_str())).unwrap_or_default();
-            Some(json!({ "type": "diff", "path": path, "oldText": old, "newText": new }))
+            let (old, new, patch) = files
+                .iter()
+                .find(|f| same(&f.0))
+                .map(|f| (f.1.as_str(), f.2.as_str(), f.3.as_str()))
+                .unwrap_or_default();
+            Some(json!({ "type": "diff", "path": path, "oldText": old, "newText": new, "patch": patch }))
         })
         .collect()
 }
 
-/// `(path, old text, new text)` of each file in a git patch, from its hunks.
-fn patch_files(patch: &str) -> Vec<(String, String, String)> {
-    let mut files: Vec<(String, String, String)> = Vec::new();
+/// `(path, old excerpt, new excerpt, unified hunks)` of each file in a git patch.
+fn patch_files(patch: &str) -> Vec<(String, String, String, String)> {
+    let mut files: Vec<(String, String, String, String)> = Vec::new();
     let mut in_hunk = false;
     for line in patch.lines() {
         if line.starts_with("diff --git ") {
-            files.push((String::new(), String::new(), String::new()));
+            files.push(Default::default());
             in_hunk = false;
             continue;
         }
@@ -278,9 +281,13 @@ fn patch_files(patch: &str) -> Vec<(String, String, String)> {
         }
         if line.starts_with("@@") {
             in_hunk = true;
+            if let Some(f) = files.last_mut() {
+                push_line(&mut f.3, line);
+            }
             continue;
         }
         let Some(f) = files.last_mut().filter(|_| in_hunk) else { continue };
+        push_line(&mut f.3, line);
         let (old, new) = (&mut f.1, &mut f.2);
         match line.as_bytes().first() {
             Some(b'-') => push_line(old, &line[1..]),

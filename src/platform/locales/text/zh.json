@@ -7607,5 +7607,18 @@
   "Open Diff as Editor Tab": "在编辑器标签页中打开差异",
   "When off, comparisons open over the full work area.": "关闭后，在覆盖整个工作区的窗口中查看差异。",
   "Could not close document": "无法关闭文档",
-  "Copy to a New Task From Here": "从此处复制到新任务"
+  "Copy to a New Task From Here": "从此处复制到新任务",
+  "This preview is limited to 160 lines.": "预览最多显示 160 行。",
+  "Open full diff": "打开完整差异",
+  "View current changes": "查看当前更改",
+  "Tool output": "工具输出",
+  "Exit code {code}": "退出码 {code}",
+  "Cannot open diff": "无法打开差异",
+  "Command in {path}": "命令运行目录：{path}",
+  "Wrap Lines": "自动换行",
+  "Copy Command": "复制命令",
+  "Recent activity": "最近活动",
+  "Show earlier activity": "显示较早的活动",
+  "Changed excerpt": "修改片段",
+  "Copy Output": "复制输出"
 }

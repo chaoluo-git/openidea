@@ -24,6 +24,10 @@ const tool = (kind: string, extra: Partial<Extract<AgentEntry, { type: "tool" }>
 });
 
 describe("summarizeWork", () => {
+  it("counts a provider's generic file edit once, as edited files", () => {
+    const s = summarizeWork([tool("other", { diffs: [{ path: "/a.ts", added: 2, removed: 0 }] })]);
+    expect(workParts(s)).toEqual([{ text: "Edited 1 file", count: 1 }]);
+  });
   it("counts tool calls by what they did and edits by file", () => {
     const s = summarizeWork([
       { type: "thought", text: "hmm" },

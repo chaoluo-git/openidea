@@ -81,7 +81,15 @@ describe("formatDuration", () => {
     expect(formatDuration(850)).toBe("850ms");
     expect(formatDuration(12_400)).toBe("12s");
     expect(formatDuration(65_000)).toBe("1m 05s");
-    expect(formatDuration(2 * 3600_000 + 3 * 60_000)).toBe("2h 03m");
+    expect(formatDuration(2 * 3600_000 + 3 * 60_000)).toBe("2h 03m 00s");
+  });
+  it.each([
+    [3599_999, "59m 59s"],
+    [3600_000, "1h 00m 00s"],
+    [3601_000, "1h 00m 01s"],
+    [3983_000, "1h 06m 23s"],
+  ])("keeps second precision across the hour boundary (%d)", (ms, expected) => {
+    expect(formatDuration(ms)).toBe(expected);
   });
 });
 

@@ -257,6 +257,34 @@ pub struct AgentToolDiff {
     pub path: IpcPath,
     pub added: u32,
     pub removed: u32,
+    /// The provider's before/after text for this call, not the current working copy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<AgentDiffPreview>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum AgentDiffPreview {
+    Text {
+        before: String,
+        after: String,
+    },
+    /// Replacement strings without an original file offset (for example Claude's Edit).
+    Snippet {
+        before: String,
+        after: String,
+    },
+    /// Unified hunks with their original line numbers; not complete file snapshots.
+    Patch {
+        text: String,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentToolCommand {
+    pub text: String,
+    pub cwd: Option<IpcPath>,
 }
 
 /// What a subagent is doing, as its parent reports it.
@@ -349,6 +377,9 @@ pub enum AgentEntry {
         locations: Vec<IpcPath>,
         /// Text the tool reported (command output…), truncated.
         output: Option<String>,
+        /// The actual invocation, when supplied separately from the human-readable title.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        command: Option<AgentToolCommand>,
         diffs: Vec<AgentToolDiff>,
     },
     Plan {

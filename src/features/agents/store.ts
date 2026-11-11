@@ -497,7 +497,7 @@ export async function loadEntries(task: string, subagent: string | null = null):
       }),
     ]);
     if (useAgents.getState().entryLoads.get(key) !== load) return;
-    let loaded = entries;
+    let loaded: AgentEntry[] = entries;
     for (const event of arrivedWhileLoading.get(key) ?? []) loaded = applyEntryEvent(loaded, event) ?? loaded;
     arrivedWhileLoading.delete(key);
     useAgents.setState((s) => {

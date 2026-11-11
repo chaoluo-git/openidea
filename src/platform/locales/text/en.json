@@ -1287,5 +1287,20 @@
   "Open Diff as Editor Tab": "Open Diff as Editor Tab",
   "When off, comparisons open over the full work area.": "When off, comparisons open over the full work area.",
   "Could not close document": "Could not close document",
-  "Copy to a New Task From Here": "Copy to a New Task From Here"
+  "Copy to a New Task From Here": "Copy to a New Task From Here",
+  "This preview is limited to 160 lines.": "This preview is limited to 160 lines.",
+  "Open full diff": "Open full diff",
+  "View current changes": "View current changes",
+  "Tool output": "Tool output",
+  "Exit code {code}": "Exit code {code}",
+  "Cannot open diff": "Cannot open diff",
+  "Command in {path}": "Command in {path}",
+  "Output": "Output",
+  "No output": "No output",
+  "Wrap Lines": "Wrap Lines",
+  "Copy Command": "Copy Command",
+  "Recent activity": "Recent activity",
+  "Show earlier activity": "Show earlier activity",
+  "Changed excerpt": "Changed excerpt",
+  "Copy Output": "Copy Output"
 }
