@@ -53,10 +53,11 @@ jobs:
           web='^(src/|e2e/|perf/|public/|scripts/|smoke/|index\.html$|vite\.config\.ts$|tsconfig[^/]*\.json$|knip\.ts$|playwright\.config\.ts$|\.oxlintrc\.json$|\.oxfmtrc\.json$)'
           embedded='^src/(bindings\.ts|styles/tokens\.css|features/plugins/views/frame-bridge\.js|platform/keymaps/)'
           # A job runs when any changed file falls outside the paths that can't affect it.
+          # Read matches directly so pipefail cannot turn a large diff's SIGPIPE into a skip.
           rust=false
-          if grep -Ev "$docs|$web" files.txt | grep -q . || grep -Eq "$embedded" files.txt; then rust=true; fi
+          if grep -Ev "$docs|$web" files.txt > /dev/null || grep -Eq "$embedded" files.txt; then rust=true; fi
           frontend=false
-          if grep -Ev "$docs" files.txt | grep -q .; then frontend=true; fi
+          if grep -Ev "$docs" files.txt > /dev/null; then frontend=true; fi
           echo "rust=$rust frontend=$frontend"
           echo "rust=$rust" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
