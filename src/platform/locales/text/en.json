@@ -1,4 +1,8 @@
 {
+  "Copy Code": "Copy Code",
+  "Couldn't copy code": "Couldn't copy code",
+  "Plain Text": "Plain Text",
+  "Table": "Table",
   "GDB (C, C++)": "GDB (C, C++)",
   "Unknown error": "Unknown error",
   "Edit & Rerun": "Edit & Rerun",
@@ -809,5 +813,10 @@
   "host is not remembered for this plugin": "host is not remembered for this plugin",
   "URL must name one exact host": "URL must name one exact host",
   "Allow for this session": "Allow for this session",
-  "This allows {host} until the remote session ends.": "This allows {host} until the remote session ends."
+  "This allows {host} until the remote session ends.": "This allows {host} until the remote session ends.",
+  "Copy Table": "Copy Table",
+  "Couldn't copy table": "Couldn't copy table",
+  "Restart With Earlier Messages": "Restart With Earlier Messages",
+  "This agent starts a fresh session with earlier messages as text context. Earlier images are not resent.": "This agent starts a fresh session with earlier messages as text context. Earlier images are not resent.",
+  "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are.": "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are."
 }

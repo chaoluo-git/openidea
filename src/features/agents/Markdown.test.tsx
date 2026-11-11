@@ -4,17 +4,23 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { resetMermaidForTests } from "../viewers/markdown/mermaid";
 import { StrictMode } from "react";
 import { Markdown } from "./Markdown";
+import { registerActions } from "@/platform/actions";
+import { codeBlockActions } from "./codeBlockActions";
 
 const { openFile, openExternalUrl } = vi.hoisted(() => ({
   openFile: vi.fn().mockResolvedValue(undefined),
   openExternalUrl: vi.fn().mockResolvedValue(undefined),
 }));
 const copyText = vi.hoisted(() => vi.fn());
+const notify = vi.hoisted(() => vi.fn());
 const readImage = vi.fn<(path: string) => Promise<string>>();
 const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-vi.mock("@/workbench/contributions", () => ({ editorService: () => ({ openFile }) }));
+vi.mock("@/workbench/contributions", () => ({
+  editorService: () => ({ openFile }),
+  notifications: () => ({ notify }),
+}));
 vi.mock("@/platform/openUrl", () => ({ openExternalUrl }));
-vi.mock("@/ui", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/ui")>()), copyText }));
+vi.mock("@/platform/clipboard", () => ({ writeClipboardText: copyText }));
 
 const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn() }));
 vi.mock("mermaid", () => ({ default: { initialize: mermaid.initialize, render: mermaid.render } }));
@@ -22,8 +28,11 @@ vi.mock("mermaid", () => ({ default: { initialize: mermaid.initialize, render: m
 const DIAGRAM = "flowchart TD\n    A-->B";
 const FENCE = `\`\`\`mermaid\n${DIAGRAM}\n\`\`\`\n`;
 
+let disposeActions: () => void;
 beforeEach(() => {
+  disposeActions = registerActions(codeBlockActions);
   vi.clearAllMocks();
+  copyText.mockReset().mockResolvedValue(undefined);
   readImage.mockReset().mockResolvedValue(PIXEL);
   resetMermaidForTests();
   mermaid.render.mockReset().mockImplementation(async (id: string, text: string) => {
@@ -41,6 +50,34 @@ beforeEach(() => {
   mockIPC((cmd, args) => (cmd === "fs_read_image" ? readImage((args as { path: string }).path) : null));
 });
 afterEach(clearMocks);
+afterEach(() => disposeActions());
+
+it("copies table cells as tab-separated data without its controls, including after streaming", async () => {
+  const text = "| Name | Value |\n| --- | --- |\n| **CPU** | `3 cores` |";
+  const { rerender } = render(
+    <StrictMode>
+      <Markdown text={text} cwd="/repo" />
+    </StrictMode>,
+  );
+  expect(screen.getAllByRole("button", { name: "Copy Table" })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Copy Table" }));
+  await waitFor(() => expect(copyText).toHaveBeenCalledWith("Name\tValue\nCPU\t3 cores"));
+  rerender(
+    <StrictMode>
+      <Markdown text={`${text}\n| Memory | 7 GiB |`} cwd="/repo" />
+    </StrictMode>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Copy Table" }));
+  await waitFor(() => expect(copyText).toHaveBeenLastCalledWith("Name\tValue\nCPU\t3 cores\nMemory\t7 GiB"));
+});
+
+it("reports table copy failure without showing a successful state", async () => {
+  copyText.mockRejectedValueOnce(new Error("Clipboard denied"));
+  render(<Markdown text={"| Name |\n| --- |\n| CPU |"} cwd="/repo" />);
+  fireEvent.click(screen.getByRole("button", { name: "Copy Table" }));
+  await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.objectContaining({ title: "Couldn't copy table" })));
+  expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
+});
 
 it("keeps one copy control outside each code block when effects restart", () => {
   const { container } = render(
@@ -56,8 +93,41 @@ it("keeps one copy control outside each code block when effects restart", () => 
   expect(blocks.map((pre) => pre.textContent)).toEqual(["rust/\n└── src/main.rs", "const a = 1;"]);
   for (const pre of blocks) {
     expect(pre.querySelector("button")).toBeNull();
-    expect(pre.parentElement!.querySelectorAll(":scope > button[data-copy]")).toHaveLength(1);
+    expect(pre.parentElement!.querySelectorAll("button[data-copy]")).toHaveLength(1);
   }
+});
+
+it("copies unlabeled and indented code without copying toolbar text", async () => {
+  const code = "  SELECT 1;\n\n  SELECT 2;";
+  render(<Markdown text={`\`\`\`\n${code}\n\`\`\``} cwd="/repo" />);
+  expect(screen.getByText("Plain Text")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Copy Code" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Copied" })).toBeEnabled());
+  expect(copyText).toHaveBeenCalledExactlyOnceWith(code);
+});
+
+it("does not report a successful copy when clipboard writing fails", async () => {
+  copyText.mockRejectedValueOnce(new Error("Clipboard denied"));
+  render(<Markdown text={"```sql\nSELECT 1;\n```"} cwd="/repo" />);
+  fireEvent.click(screen.getByRole("button", { name: "Copy Code" }));
+  await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.objectContaining({ title: "Couldn't copy code" })));
+  expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Copy Code" })).toBeEnabled());
+});
+
+it("preserves each code block's wrap preference when the reply streams", async () => {
+  const text = "```sql\nSELECT 1;\n```\n\n```text\nSecond block\n```";
+  const { rerender } = render(<Markdown text={text} cwd="/repo" />);
+  const wraps = screen.getAllByRole("button", { name: "Use Soft Wraps" });
+  fireEvent.click(wraps[0]!);
+  expect(wraps[0]).toHaveAttribute("aria-pressed", "true");
+  expect(wraps[1]).toHaveAttribute("aria-pressed", "false");
+  rerender(<Markdown text={`${text}\n\nMore response text`} cwd="/repo" />);
+  const updated = screen.getAllByRole("button", { name: "Use Soft Wraps" });
+  expect(updated[0]).toHaveAttribute("aria-pressed", "true");
+  expect(updated[1]).toHaveAttribute("aria-pressed", "false");
+  fireEvent.click(updated[0]!);
+  expect(updated[0]).toHaveAttribute("aria-pressed", "false");
 });
 
 it.each([
@@ -255,7 +325,7 @@ describe("mermaid diagrams in a reply", () => {
     await waitFor(() => expect(block).toHaveAttribute("data-mermaid-state", "ok"));
     // The drawn diagram hides the code block (and with it the usual per-pre Copy button):
     // the block keeps its own, outside what gets hidden.
-    const copy = block.querySelector<HTMLElement>(":scope > button[data-copy]")!;
+    const copy = block.querySelector<HTMLElement>("button[data-copy]")!;
     expect(copy.dataset.copy).toBe(DIAGRAM);
     expect(block.querySelector("pre button[data-copy]")).toBeNull();
     fireEvent.click(copy);

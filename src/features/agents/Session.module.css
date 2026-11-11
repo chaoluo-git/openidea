@@ -244,6 +244,10 @@
   font-size: var(--fs-input-large);
   line-height: 1.6;
 }
+.agentCard:has(.tableCard, .codeBlock, :global([data-mermaid])),
+.reply:has(.tableCard, .codeBlock, :global([data-mermaid])) {
+  width: 100%;
+}
 @container (max-width: 640px) {
   .stream {
     --session-card-width: 96%;
@@ -361,6 +365,7 @@
 
 .editBar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-top: 6px;
@@ -369,12 +374,15 @@
 
 .editButtons {
   display: flex;
+  flex: none;
   gap: 6px;
   margin-left: auto;
 }
 
 .markdown {
-  line-height: 1.5;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 .markdown :global(p) {
@@ -385,55 +393,89 @@
 }
 .markdown :global(code) {
   font-family: var(--font-mono);
-  font-size: var(--fs-small);
+  font-size: 0.9em;
   padding: 0 4px;
   border-radius: 3px;
   background: var(--bg-elev);
 }
 .markdown :global(pre) {
   margin: 0 0 8px;
-  padding: 8px 10px;
+  padding: var(--space-4);
   border-radius: var(--radius-small);
   background: var(--bg-elev);
   overflow: auto;
+  font-size: var(--fs-ui);
+  line-height: 1.6;
 }
 .markdown :global(pre code) {
   display: block;
   padding: 0;
   background: none;
+  font-size: inherit;
 }
 .codeBlock {
   position: relative;
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-3);
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-popup-large);
+  background: var(--bg-elev);
 }
 .codeBlock > :global(pre) {
   margin: 0;
+  border-radius: 0 0 var(--radius-popup-large) var(--radius-popup-large);
 }
-.codeCopy {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  display: inline-flex;
+.codeBlock[data-wrapped] > :global(pre) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.codeToolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-small);
+  gap: 4px;
+  min-height: 32px;
+  padding: 4px var(--space-2);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-popup-large) var(--radius-popup-large) 0 0;
   background: var(--bg-elev);
   color: var(--fg-secondary);
-  cursor: pointer;
-  opacity: 0;
+  font-size: var(--fs-small);
   -webkit-user-select: none;
   user-select: none;
 }
-.codeBlock:hover > .codeCopy,
-.markdown :global([data-mermaid]:hover) .codeCopy,
-.codeCopy:focus-visible {
-  opacity: 1;
+.codeLanguage {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.codeCopy:hover {
+.codeCopy,
+.codeWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  gap: 5px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+.codeWrap[aria-pressed="true"] {
+  background: var(--bg-active);
+  color: var(--fg-strong);
+}
+.codeCopy:hover,
+.codeWrap:hover {
   background: var(--bg-hover);
 }
 /* Mermaid diagrams: the source stays until the diagram is drawn (and next to an
@@ -442,6 +484,8 @@
 .markdown :global([data-mermaid]) {
   position: relative;
   margin: 0 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-popup-large);
 }
 .markdown :global([data-mermaid] > pre) {
   margin: 0;
@@ -481,18 +525,75 @@
 .markdown :global(a) {
   color: var(--link);
 }
+.tableCard {
+  position: relative;
+  min-width: 0;
+  margin: 0 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-popup-large);
+}
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: inherit;
+}
+.tableCopy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--bg-elev);
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+.tableCopy:hover {
+  background: var(--bg-hover);
+}
 .markdown :global(table) {
-  display: block;
-  margin: 0 0 8px;
-  overflow: auto;
-  border-collapse: collapse;
+  width: 100%;
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 .markdown :global(th),
 .markdown :global(td) {
-  /* `overflow-wrap: anywhere` from .markdown would otherwise squeeze a column to a few letters. */
+  /* Let wide tables scroll rather than breaking identifiers into fragments. */
   min-width: 6em;
-  border: 1px solid var(--border);
-  padding: 4px 8px;
+  padding: var(--space-4) 24px;
+  border: 0;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.markdown :global(th) {
+  color: var(--fg-secondary);
+  font-weight: 400;
+  text-align: left;
+}
+.markdown :global(th:last-child) {
+  padding-right: 44px;
+}
+.markdown :global(tbody tr:hover) {
+  background: var(--bg-hover);
+}
+.markdown :global(th[align="center"]),
+.markdown :global(td[align="center"]) {
+  text-align: center;
+}
+.markdown :global(th[align="right"]),
+.markdown :global(td[align="right"]) {
+  text-align: right;
+}
+.markdown :global(td code) {
+  white-space: normal;
+  overflow-wrap: normal;
 }
 .markdown :global(h1),
 .markdown :global(h2),

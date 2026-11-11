@@ -53,7 +53,8 @@ the app version, run `pnpm release:prepare <version>`, commit the resulting file
 on `dev`, and push. The existing stable and nightly workflows keep their own
 release channels.
 
-Dev packages are unsigned development builds without Apple notarization or
-automatic updates. Install later versions manually from this fork's
+Dev packages use an ad-hoc signature, with the bundled application verified before
+publishing. They have no Developer ID signature, Apple notarization or automatic
+updates. Install later versions manually from this fork's
 [Releases](https://github.com/chaoluo-git/openidea/releases). The build disables
 upstream updater endpoints so an update cannot replace the maintained fork.

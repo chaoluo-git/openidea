@@ -5,6 +5,7 @@ import { confirm } from "@/workbench/messages";
 import { notifications } from "@/workbench/contributions";
 import { replyOperations, replyTurns, turnNumbers } from "./model";
 import { forkTask, quoteInComposer, rerunFrom, retractFrom, useAgents } from "./store";
+import { codeBlockActions } from "./codeBlockActions";
 
 export interface CopyReply {
   text: string;
@@ -59,6 +60,7 @@ async function runReplyOperation(task: string, title: string, run: () => Promise
 }
 
 export const replyActions: Action[] = [
+  ...codeBlockActions,
   copyReplyAction,
   {
     id: "agents.jumpToLatest",

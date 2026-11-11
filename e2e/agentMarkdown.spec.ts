@@ -95,11 +95,121 @@ const css = (reply: ReturnType<Page["locator"]>, selector: string, property: str
     .evaluate((el, name) => getComputedStyle(el).getPropertyValue(name), property);
 const px = (value: string) => Number.parseFloat(value);
 
+const SQL_REPLY = [
+  "## PostgreSQL performance summary",
+  "",
+  "The table compares the three queries and their share of the total execution time.",
+  "",
+  "| Rank | SQL | Share | Calls | Average | Notes |",
+  "| --- | --- | ---: | ---: | ---: | --- |",
+  "| #1 | `UPDATE registrations SET modified_at` | **33.02%** | 76,165 | 108ms | Update timestamp |",
+  "| #2 | `SELECT user_id FROM registrations` | **31.83%** | 76,243 | 104ms | Check registration |",
+  "| #3 | `SELECT user_id FROM subscriptions` | **27.75%** | 77,252 | 90ms | List subscriptions |",
+  "",
+  "### Inspect indexes",
+  "",
+  "```sql",
+  "-- Read the existing indexes",
+  "SELECT indexname, indexdef",
+  "FROM pg_indexes",
+  "WHERE tablename = 'registrations';",
+  "```",
+].join("\n");
+
+test("fills the conversation with table and code cards", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1500, height: 1000 });
+  const reply = await openReply(page, SQL_REPLY, undefined, "light");
+  await page.evaluate(async (id) => {
+    const path = "/src/features/agents/store.ts";
+    const store = await import(path);
+    store.openTaskInEditorLocation(id);
+  }, TASK.id);
+  await reply.screenshot({ path: info.outputPath("markdown-cards.png") });
+  const sizes = await reply.evaluate((root) => ({
+    column: root.closest("[class*='_agentMessage_']")!.getBoundingClientRect().width,
+    table: root.querySelector("table")!.getBoundingClientRect().width,
+    code: root.querySelector("pre")!.getBoundingClientRect().width,
+  }));
+  expect(Math.abs(sizes.column - sizes.table)).toBeLessThan(3);
+  expect(Math.abs(sizes.column - sizes.code)).toBeLessThan(3);
+});
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [760, 1500]) {
+    test(`fills a short table in ${theme} at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1000 });
+      const reply = await openReply(
+        page,
+        "Summary:\n\n| Metric | Before | After |\n| --- | --- | --- |\n| CPU | 3 cores | 0.1 cores |\n| Memory | 7 GiB | 1 GiB |",
+        undefined,
+        theme,
+      );
+      const geometry = await reply.evaluate((root) => {
+        const frame = root.querySelector("table")!.parentElement!;
+        return {
+          column: root.closest("[class*='_agentMessage_']")!.getBoundingClientRect().width,
+          frame: frame.parentElement!.getBoundingClientRect().width,
+          row: root.querySelector("tr")!.getBoundingClientRect().width,
+          visible: frame.clientWidth,
+          page: document.documentElement.clientWidth,
+          content: document.documentElement.scrollWidth,
+        };
+      });
+      expect(Math.abs(geometry.column - geometry.frame)).toBeLessThan(1);
+      expect(geometry.row).toBeGreaterThanOrEqual(geometry.visible - 1);
+      expect(geometry.content).toBeLessThanOrEqual(geometry.page);
+    });
+  }
+}
+
+test("keeps SQL controls visible, wraps long code and copies the original source", async ({ page, context }, info) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.setViewportSize({ width: 900, height: 1000 });
+  const code = `SELECT user_id, field_name, field_value, last_modified FROM filter_push_user_registration WHERE field_name = '${"registration_".repeat(18)}';`;
+  const reply = await openReply(page, `SQL:\n\n\`\`\`sql\n${code}\n\`\`\``);
+  await page.mouse.move(0, 0);
+  const copy = reply.getByRole("button", { name: "Copy Code", exact: true });
+  const wrap = reply.getByRole("button", { name: "Use Soft Wraps" });
+  await expect(copy).toBeVisible();
+  await expect(wrap).toHaveAttribute("aria-pressed", "false");
+  await expect(reply.locator("code .tok-keyword").first()).toBeVisible();
+  const pre = reply.locator("pre");
+  const before = await pre.evaluate((el) => ({
+    width: el.clientWidth,
+    content: el.scrollWidth,
+    height: el.clientHeight,
+  }));
+  expect(before.content).toBeGreaterThan(before.width);
+  await wrap.click();
+  await expect(wrap).toHaveAttribute("aria-pressed", "true");
+  const after = await pre.evaluate((el) => ({
+    width: el.clientWidth,
+    content: el.scrollWidth,
+    height: el.clientHeight,
+  }));
+  expect(after.content).toBeLessThanOrEqual(after.width);
+  expect(after.height).toBeGreaterThan(before.height);
+  await wrap.focus();
+  await page.keyboard.press("Tab");
+  await expect(copy).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(reply.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+  await reply.screenshot({ path: info.outputPath("code-wrapped-copied.png") });
+  await wrap.click();
+  await expect(wrap).toHaveAttribute("aria-pressed", "false");
+  expect(await pre.evaluate((el) => el.scrollWidth)).toBeGreaterThan(before.width);
+});
+
 test("styles tables so a reply reads as a table", async ({ page }) => {
   const reply = await openReply(page, REPLY);
-  expect(await css(reply, "td", "border-top-width")).toBe("1px");
-  expect(await css(reply, "td", "padding-left")).toBe("8px");
-  expect(await css(reply, "th", "border-top-width")).toBe("1px");
+  expect(await css(reply, "table", "display")).toBe("table");
+  expect(await css(reply, "td", "padding-left")).toBe("24px");
+  expect(await css(reply, "th", "border-bottom-width")).toBe("0px");
+  expect(await css(reply, "th", "font-weight")).toBe("400");
+  const frame = reply.getByRole("region", { name: "Table" });
+  await expect(frame.locator("..")).toHaveCSS("border-top-width", "1px");
+  expect(px(await frame.evaluate((el) => getComputedStyle(el).borderRadius))).toBeGreaterThan(0);
   // A narrow chat must not squeeze a column to a few letters.
   const widths = await reply
     .locator("td")
@@ -107,14 +217,33 @@ test("styles tables so a reply reads as a table", async ({ page }) => {
   for (const width of widths) expect(width).toBeGreaterThanOrEqual(70);
 });
 
+test("copies a whole table while its copy button stays visible after horizontal scrolling", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.setViewportSize({ width: 760, height: 1000 });
+  const reply = await openReply(page, REPLY);
+  const frame = reply.getByRole("region", { name: "Table" });
+  await frame.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  const copy = reply.getByRole("button", { name: "Copy Table" });
+  await expect(copy).toBeVisible();
+  await copy.click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "Path\tOwner\tStatus\tNotes\nsrc/features/agents/conversation/very/long/path/file.tsx\tsomeone\tmodified\ta fairly long note",
+  );
+});
+
 test("scrolls a wide table inside the reply", async ({ page }) => {
   const reply = await openReply(page, REPLY);
   const sizes = await reply.evaluate((el) => {
     const table = el.querySelector("table")!;
-    return { reply: el.clientWidth, table: table.clientWidth, content: table.scrollWidth };
+    return { reply: el.clientWidth, frame: table.parentElement!.clientWidth, table: table.clientWidth };
   });
-  expect(sizes.table).toBeLessThanOrEqual(sizes.reply);
-  expect(sizes.content).toBeGreaterThan(sizes.table);
+  expect(sizes.frame).toBeLessThanOrEqual(sizes.reply);
+  expect(sizes.table).toBeGreaterThan(sizes.frame);
 });
 
 test("sizes headings for a chat and keeps small ones readable", async ({ page }) => {
@@ -446,3 +575,71 @@ for (const theme of ["dark", "light"] as const) {
     for (const { text, ratio } of contrasts) expect(ratio, `${theme}: ${text}`).toBeGreaterThanOrEqual(4.5);
   });
 }
+
+test("edits an earlier Copilot message with a visible restart confirmation", async ({ page }, info) => {
+  await openReply(page, "Earlier answer");
+  await page.evaluate(async (id) => {
+    const storePath = "/src/features/agents/store.ts";
+    const routePath = "/src/platform/tauriCore.ts";
+    const store = await import(storePath);
+    const { setInvokeRoute } = await import(routePath);
+    const task = store.useAgents.getState().tasks.get(id)!;
+    const before = store.useAgents.getState().entries.get(id)!;
+    store.useAgents.setState({
+      tasks: new Map([[id, { ...task, provider: "copilot", capabilities: { ...task.capabilities, rollback: false } }]]),
+      entries: new Map([
+        [
+          id,
+          [
+            ...before,
+            { type: "user", text: "Original follow up", attachments: [], steered: false },
+            { type: "agent", text: "Reply to replace" },
+          ],
+        ],
+      ]),
+    });
+    setInvokeRoute((cmd, args) => {
+      if (cmd === "agent_rollback") {
+        if ((args as { turns: number }).turns !== 1) return Promise.reject(new Error("Wrong turn"));
+        store.useAgents.setState({ entries: new Map([[id, before]]) });
+        return Promise.resolve(null);
+      }
+      if (cmd === "agent_prompt") {
+        const text = (args as { prompt: { text: string } }).prompt.text;
+        store.useAgents.setState({
+          entries: new Map([
+            [
+              id,
+              [
+                ...before,
+                { type: "user", text, attachments: [], steered: false },
+                { type: "agent", text: "Regenerated answer" },
+              ],
+            ],
+          ]),
+        });
+        return Promise.resolve(null);
+      }
+      return null;
+    });
+  }, TASK.id);
+  await page.getByRole("button", { name: "Edit & Rerun", exact: true }).nth(1).click();
+  const edit = page.getByRole("textbox", { name: "Message", exact: true }).first();
+  await expect(edit).toHaveValue("Original follow up");
+  await edit.fill("Updated follow up");
+  await page.getByRole("button", { name: "Send", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Restart With Earlier Messages" });
+  await expect(dialog).toContainText("This agent cannot rewind.");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(edit).toHaveValue("Updated follow up");
+  await page.getByRole("button", { name: "Send", exact: true }).first().click();
+  await page
+    .getByRole("dialog", { name: "Restart With Earlier Messages" })
+    .getByRole("button", { name: "Edit & Rerun", exact: true })
+    .click();
+  await expect(page.getByText("Regenerated answer", { exact: true })).toBeVisible();
+  await expect(page.getByText("Original follow up", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Reply to replace", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Earlier answer", { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("copilot-edited.png") });
+});
