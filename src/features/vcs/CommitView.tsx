@@ -17,7 +17,7 @@ import {
 } from "react";
 import { tx } from "@/platform/i18n";
 import clsx from "clsx";
-import { executeAction } from "@/platform/actions";
+import { executeAction, getAction, useRunningActions } from "@/platform/actions";
 import { basename, dirname } from "@/platform/project";
 import { isTestFile, useEffectiveRoots } from "@/platform/projectRoots";
 import {
@@ -32,6 +32,7 @@ import {
   SplitGroup,
   SplitHandle,
   SplitPanel,
+  Spinner,
   Tabs,
   Tree,
   fileIconName,
@@ -43,7 +44,13 @@ import {
   type TreeHandle,
   T,
 } from "@/ui";
-import { editorService, maybeEditorService, type EditorInput, useMenuSlotItems } from "@/workbench/contributions";
+import {
+  editorService,
+  maybeEditorService,
+  type EditorInput,
+  useMenuSlotItems,
+  type MenuSlotItem,
+} from "@/workbench/contributions";
 import { evaluateWhen, useContextKeys } from "@/platform/context";
 import { useToolWindowLayout } from "@/workbench/toolwindows/store";
 import {
@@ -1062,9 +1069,32 @@ function CommitMessageActions() {
       {(items ?? [])
         .filter((i) => evaluateWhen(i.when ?? undefined))
         .map((i) => (
-          <IconButton key={i.action} icon={i.icon ?? "plugin"} action={i.action} actionArg={i.arg} size="small" />
+          <CommitMessageAction key={i.action} item={i} />
         ))}
     </>
+  );
+}
+
+function CommitMessageAction({ item }: { item: MenuSlotItem }) {
+  const busy = useRunningActions((s) => s.running.has(item.action));
+  if (!item.showLabel)
+    return <IconButton icon={item.icon ?? "plugin"} action={item.action} actionArg={item.arg} size="small" />;
+  const title = getAction(item.action)?.title ?? item.label;
+  return (
+    <Button
+      size="small"
+      variant="ghost"
+      aria-label={tx(title)}
+      title={title}
+      aria-busy={busy || undefined}
+      aria-disabled={busy || undefined}
+      onClick={() => {
+        if (!busy) void executeAction(item.action, item.arg);
+      }}
+    >
+      {busy ? <Spinner size={14} /> : <Icon name={item.icon ?? "plugin"} size={14} />}
+      {item.verbatim ? item.label : tx(item.label)}
+    </Button>
   );
 }
 

@@ -7152,5 +7152,19 @@
   "Couldn't copy table": "无法复制表格",
   "Restart With Earlier Messages": "使用之前的消息重新开始",
   "This agent starts a fresh session with earlier messages as text context. Earlier images are not resent.": "此 Agent 会新建会话，将之前的消息作为文本上下文。之前的图片不会重新发送。",
-  "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are.": "此 Agent 不支持回退。将新建会话，以之前的消息作为文本上下文，并替换此消息及后续回复。之前的图片不会重新发送。Agent 已修改的文件保持现状。"
+  "This agent cannot rewind. A fresh session receives earlier messages as text context and replaces this message and later replies. Earlier images are not resent. Files the agent changed stay as they are.": "此 Agent 不支持回退。将新建会话，以之前的消息作为文本上下文，并替换此消息及后续回复。之前的图片不会重新发送。Agent 已修改的文件保持现状。",
+  "Generate Commit Message": "生成提交信息",
+  "Cancel Commit Message Generation": "取消生成提交信息",
+  "Choose Agent for Commit Message": "选择生成提交信息的 Agent",
+  "Couldn't generate commit message": "无法生成提交信息",
+  "Couldn't close the generation session": "无法关闭生成会话",
+  "The commit selection changed. Generate the message again.": "待提交内容已变化，请重新生成提交信息。",
+  "The selected changes are too large. Select fewer files.": "所选变更过大，请减少所选文件。",
+  "Select changes to generate a commit message.": "请选择要提交的变更，再生成提交信息。",
+  "The agent did not return a valid commit message. Try again.": "Agent 未返回有效的提交信息，请重试。",
+  "Configure and sign in to an agent in Tools → Agents first.": "请先在工具 → Agents 中配置并登录 Agent。",
+  "The agent could not generate a commit message.": "Agent 无法生成提交信息。",
+  "Generating the commit message timed out. Try again.": "生成提交信息超时，请重试。",
+  "Open a project with selected changes first.": "请先打开项目并选择待提交的变更。",
+  "The commit selection or draft changed. Generate the message again.": "待提交内容或草稿已变化，请重新生成提交信息。"
 }

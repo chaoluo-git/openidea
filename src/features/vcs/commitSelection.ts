@@ -5,6 +5,7 @@
  * Amend and the inclusion, so a plugin's message never replaces newer typing.
  */
 import type { CommitOptions, CommitSelection, PartialCommitFile } from "@/bindings";
+import { tx } from "@/platform/i18n";
 import { call, commands } from "@/platform/ipc";
 import { workflowSettings } from "@/platform/workflowSettings";
 import { maybeEditorService, provideCommitService, useCommitCheckProviders } from "@/workbench/contributions";
@@ -16,6 +17,7 @@ import { hunkKeys } from "./hunks";
 import { baseName, rootOf } from "./model";
 import { saveAll } from "./ops";
 import { currentRepo, refreshNow, useVcs } from "./store";
+import { commitMessageContext } from "./commitMessageContext";
 
 let revision = 1;
 
@@ -116,6 +118,13 @@ async function pendingSelection(): Promise<CommitSelection | null> {
 export function provideCommit(): () => void {
   provideCommitService({
     selection: pendingSelection,
+    messageContext: async () => {
+      const selection = await pendingSelection();
+      if (!selection) return null;
+      if (selection.revision !== revision)
+        throw new Error(tx("The commit selection changed. Generate the message again."));
+      return commitMessageContext(selection, currentPlan());
+    },
     setMessage: (rev, message) => {
       if (rev !== revision || !useVcs.getState().root) return false;
       useCommit.setState({ message });

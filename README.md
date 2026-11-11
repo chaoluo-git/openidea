@@ -33,6 +33,18 @@ for 60+ languages. Builds for macOS, Windows and Linux. On Windows, if you'd
 rather skip the installer, each release also ships a portable zip — unpack it
 and run `openidea.exe`.
 
+## Generate commit messages with an agent
+
+Select the files or code blocks to commit, then click **Generate** above the commit
+message. It uses the provider and model of your recent agent session, or the agent
+selected for a new task; configure and sign in under **Tools → Agents** first.
+Repository instructions, recent commit subjects and the commit message line limits
+guide the result. Included staged changes, partial hunks and Amend are supported.
+
+Review or edit the generated draft before committing. **Cancel Commit Message
+Generation** stops a pending request; editing the draft or changing the selected
+changes while it runs preserves your newer work.
+
 ## Benchmark
 
 Opening [freqtrade](https://github.com/freqtrade/freqtrade) (Python, ~770 files)

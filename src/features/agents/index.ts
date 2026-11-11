@@ -26,6 +26,7 @@ import { connect, disconnect, openHome, useAgents } from "./store";
 import { TaskStatusMark } from "./TaskStatusMark";
 import { taskActions } from "./taskActions";
 import { replyActions } from "./replyActions";
+import { commitMessageActions, registerCommitMessageActions } from "./commitMessage";
 
 /** Settings › Tools › Agents (also used by the Settings window). */
 export function activateSettingsPages(): () => void {
@@ -47,6 +48,7 @@ export function activate(): () => void {
   sync(useProject.getState().project?.root);
   const disposers = [
     activateSettingsPages(),
+    registerCommitMessageActions(),
     // The performance harness (`perf/`): long conversations to switch between and scroll.
     import.meta.env.DEV || import.meta.env.MODE === "perf"
       ? registerActions([
@@ -120,6 +122,7 @@ export function activate(): () => void {
           : [],
     }),
     registerActions([
+      ...commitMessageActions,
       ...taskActions,
       ...replyActions,
       {

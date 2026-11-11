@@ -713,6 +713,16 @@ export interface CommitService {
   selection(): Promise<CommitSelection | null>;
   /** Replaces the message if the draft is still at `revision`; false when it changed. */
   setMessage(revision: number, message: string): boolean;
+  /** Included diffs and repository conventions for generating a commit-message draft. */
+  messageContext?(): Promise<CommitMessageContext | null>;
+}
+
+export interface CommitMessageContext {
+  revision: number;
+  message: string;
+  amend: boolean;
+  limits?: { subject: number | null; body: number | null };
+  repositories: Array<{ root: string; changes: string; instructions: string; recentMessages: string[] }>;
 }
 
 let commitServiceImpl: CommitService | undefined;
@@ -1070,6 +1080,8 @@ export interface MenuSlotItem {
   verbatim?: boolean;
   /** Icon name, for toolbar slots. */
   icon?: string;
+  /** Show the label beside the icon in toolbars. */
+  showLabel?: boolean;
   /** Shown only while this `when` clause holds (toolbar slots). */
   when?: string | null;
 }
