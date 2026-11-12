@@ -19,7 +19,7 @@ import { hasMermaid, renderMermaidIn } from "@/features/viewers/markdown/mermaid
 import { subscribeTheme, themeKey } from "@/platform/themeWatch";
 import { fileHref, pathHref, type PathLink } from "./conversation";
 import { enhanceFileLinks } from "./markdownLinks";
-import { loadImages } from "./markdownImages";
+import { loadImages, type MessageImages } from "./markdownImages";
 import type { CopyCode, WrapCode } from "./codeBlockActions";
 import styles from "./Session.module.css";
 
@@ -49,9 +49,20 @@ const RENDERED_MAX = 500;
 
 let purifier: ReturnType<typeof DOMPurify> | null = null;
 
+/** Whether the webview would read `value` as an address on another host: it drops blanks and takes `\` for `/`. */
+const namesHost = (value: string) =>
+  /^(https?:|[\\/]{2})/i.test([...value].filter((c) => c.charCodeAt(0) > 32).join(""));
+
 function purify(): ReturnType<typeof DOMPurify> {
   if (purifier) return purifier;
   const p = DOMPurify(window);
+  // A reply reaches another host only when the user asks: a link they click, an image `loadImages` holds.
+  // `poster`, `background` and the `src` of other tags would fetch as soon as the reply renders.
+  p.addHook("uponSanitizeAttribute", (node, data) => {
+    if (data.attrName === "alt" || data.attrName === "title") return;
+    if (data.attrName === "href" && node.tagName === "A") return;
+    if (namesHost(data.attrValue)) data.keepAttr = false;
+  });
   const sources = new WeakMap<Node, string>();
   // Preserve image-only file URLs without relaxing URI sanitizing for links or other tags.
   p.addHook("beforeSanitizeAttributes", (node) => {
@@ -183,12 +194,7 @@ export function openPathLink(link: PathLink) {
 }
 
 /** Highlighting, Copy buttons and file links over freshly rendered `root`. */
-function enhance(
-  root: HTMLElement,
-  cwd: string,
-  images: Map<string, Promise<string>>,
-  wrapped: Map<number, boolean>,
-): () => void {
+function enhance(root: HTMLElement, cwd: string, images: MessageImages, wrapped: Map<number, boolean>): () => void {
   let alive = true;
   const disposeImages = loadImages(root, cwd, images);
   const disposeLinks = enhanceFileLinks(root, cwd);
@@ -325,7 +331,7 @@ function paintBlocks(
   painted: PaintedBlock[],
   sources: string[],
   cwd: string,
-  images: Map<string, Promise<string>>,
+  images: MessageImages,
 ) {
   let same = 0;
   while (same < painted.length && same < sources.length && painted[same]!.source === sources[same]) same++;
@@ -355,7 +361,7 @@ export function Markdown({
   onDiagramDrawn?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const images = useRef(new Map<string, Promise<string>>());
+  const images = useRef<MessageImages>({ reads: new Map(), asked: new Set() });
   /** The blocks on screen, so a streamed chunk repaints only the blocks it changed. */
   const painted = useRef<PaintedBlock[]>([]);
   const paintedCwd = useRef(cwd);

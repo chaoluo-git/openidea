@@ -329,7 +329,7 @@ a token.
 
 <!-- BEGIN GENERATED TOKEN REFERENCE: pnpm gen:theme-docs -->
 
-260 themeable tokens: 129 in the UI theme file, 131 in the editor colour scheme file.
+267 themeable tokens: 129 in the UI theme file, 138 in the editor colour scheme file.
 
 ### Agent chat (UI theme)
 
@@ -461,6 +461,13 @@ a token.
 | `--syn-python-constant` | `var(--syn-constant)` | `var(--syn-constant)` |
 | `--syn-python-property` | `var(--syn-property)` | `var(--syn-property)` |
 | `--syn-python-type-parameter` | `var(--syn-type)` | `var(--syn-type)` |
+| `--syn-python-parentheses` | `var(--syn-punct)` | `var(--syn-punct)` |
+| `--syn-python-brackets` | `var(--syn-punct)` | `var(--syn-punct)` |
+| `--syn-python-braces` | `var(--syn-punct)` | `var(--syn-punct)` |
+| `--syn-python-nested-function` | `var(--syn-function)` | `var(--syn-function)` |
+| `--syn-python-method-call` | `var(--syn-function-call)` | `var(--syn-function-call)` |
+| `--syn-python-annotation` | `var(--syn-type)` | `var(--syn-type)` |
+| `--syn-python-format` | `var(--syn-escape)` | `var(--syn-escape)` |
 | `--syn-python-builtin` | `var(--syn-builtin)` | `var(--syn-builtin)` |
 | `--syn-python-predefined-definition` | `var(--syn-predefined)` | `var(--syn-predefined)` |
 | `--syn-python-predefined-usage` | `var(--syn-predefined)` | `var(--syn-predefined)` |

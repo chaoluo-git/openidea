@@ -1,5 +1,7 @@
 /** Reading an agent conversation: quoting, file links, turn times and finding text. */
 
+import { opensOtherShare } from "@/platform/paths";
+
 /** `text` as a Markdown quote for the composer, followed by an empty line to type in. */
 export function quoteText(text: string): string {
   const lines = text.replace(/\s+$/, "").split("\n");
@@ -55,6 +57,7 @@ export function fileHref(href: string, cwd: string): PathLink | null {
   )
     return null;
   const path = match[1].startsWith("/") ? match[1] : `${cwd.replace(/\/$/, "")}/${match[1].replace(/^\.\//, "")}`;
+  if (opensOtherShare(path, match[1], cwd)) return null;
   const link: PathLink = { path };
   const line = match[2] ?? match[4];
   const col = match[3] ?? match[5];
