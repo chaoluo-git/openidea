@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import type { AgentTask } from "@/bindings";
@@ -40,6 +41,13 @@ vi.mock("./store", async (original) => ({
   deleteTask: vi.fn(async () => {}),
   dockTask: vi.fn(),
   setSessionLocation: vi.fn(),
+}));
+
+// These selection/history tests mount the view without a workbench frame; browser tests cover its real header.
+vi.mock("@/workbench/toolwindows/ToolWindows", async (original) => ({
+  ...(await original<typeof import("@/workbench/toolwindows/ToolWindows")>()),
+  useOwnToolWindowHeader: () => {},
+  ToolWindowHeader: ({ children }: { children: ReactNode }) => <header>{children}</header>,
 }));
 
 vi.mock("./SessionEditor", () => ({ SessionEditor: () => <div data-testid="docked-session" /> }));
