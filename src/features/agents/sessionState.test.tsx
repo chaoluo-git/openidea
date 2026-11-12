@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { registerActions } from "@/platform/actions";
 import { useProject } from "@/platform/project";
@@ -63,6 +64,11 @@ vi.mock("@/platform/ipc", async (original) => ({
 }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
+}));
+// The standalone view tests have no tool-window frame; browser tests cover the real chrome.
+vi.mock("@/workbench/toolwindows/ToolWindows", () => ({
+  useOwnToolWindowHeader: () => {},
+  ToolWindowHeader: ({ children }: { children: ReactNode }) => <header>{children}</header>,
 }));
 vi.mock("@/workbench/contributions", async (original) => ({
   ...(await original<typeof import("@/workbench/contributions")>()),

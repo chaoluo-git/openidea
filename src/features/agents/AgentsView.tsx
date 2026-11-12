@@ -35,6 +35,7 @@ import styles from "./Agents.module.css";
 import { basename, useProject } from "@/platform/project";
 import { useTx } from "@/platform/i18n";
 import { executeAction } from "@/platform/actions";
+import { ToolWindowHeader, useOwnToolWindowHeader } from "@/workbench/toolwindows/ToolWindows";
 
 export function AgentsHeaderActions() {
   return (
@@ -94,6 +95,7 @@ export function AgentsView() {
   const dockedTabs = useAgents((s) => s.dockedTabs);
   const homeOpen = useAgents((s) => s.homeOpen);
   const inline = docked !== null || homeOpen;
+  useOwnToolWindowHeader(loaded && !error && inline);
   const historyRef = useRef<HTMLButtonElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const external = useAgents((s) => s.external);
@@ -250,42 +252,45 @@ export function AgentsView() {
       <div className={styles.content}>
         {inline && (
           <div className={styles.docked}>
-            <div className={styles.dockedBar}>
-              <IconButton
-                ref={historyRef}
-                icon="history"
-                title="Agent sessions"
-                aria-haspopup="dialog"
-                aria-expanded={historyOpen}
-                onClick={() => {
-                  setSelected(new Set(docked ? [docked] : []));
-                  setHistoryOpen((open) => !open);
-                }}
-              />
-              <Tabs
-                className={styles.sessionTabs}
-                aria-label={tx("Agent sessions")}
-                panelIdPrefix="agent-sessions"
-                items={[
-                  ...openTabs.map((id) => ({
-                    id,
-                    text: tasks.get(id)?.title ?? id,
-                    label: <span className={styles.dockedTitle}>{tasks.get(id)?.title ?? id}</span>,
-                    closable: true,
-                    trailing: <TaskStatusMark task={id} />,
-                  })),
-                  ...(homeOpen ? [{ id: HOME, label: tx("New Agent Task"), closable: true }] : []),
-                ]}
-                activeId={homeOpen ? HOME : docked}
-                onSelect={(id) => (id === HOME ? openHome() : showTask(id))}
-                onClose={(id) => void executeAction("agents.closeSessionTab", id)}
-                dnd={{
-                  type: TASK_DRAG,
-                  payload: (id) => id,
-                  onDrop: (task, index) => void executeAction("agents.reorderSessionTab", { task, index }),
-                }}
-              />
-            </div>
+            <ToolWindowHeader title={false} closeTarget>
+              <div className={styles.dockedBar}>
+                <IconButton
+                  ref={historyRef}
+                  icon="history"
+                  title="Agent sessions"
+                  aria-haspopup="dialog"
+                  aria-expanded={historyOpen}
+                  onClick={() => {
+                    setSelected(new Set(docked ? [docked] : []));
+                    setHistoryOpen((open) => !open);
+                  }}
+                />
+                <Tabs
+                  variant="compact"
+                  className={styles.sessionTabs}
+                  aria-label={tx("Agent sessions")}
+                  panelIdPrefix="agent-sessions"
+                  items={[
+                    ...openTabs.map((id) => ({
+                      id,
+                      text: tasks.get(id)?.title ?? id,
+                      label: <span className={styles.dockedTitle}>{tasks.get(id)?.title ?? id}</span>,
+                      closable: true,
+                      trailing: <TaskStatusMark task={id} />,
+                    })),
+                    ...(homeOpen ? [{ id: HOME, label: tx("New Agent Task"), closable: true }] : []),
+                  ]}
+                  activeId={homeOpen ? HOME : docked}
+                  onSelect={(id) => (id === HOME ? openHome() : showTask(id))}
+                  onClose={(id) => void executeAction("agents.closeSessionTab", id)}
+                  dnd={{
+                    type: TASK_DRAG,
+                    payload: (id) => id,
+                    onDrop: (task, index) => void executeAction("agents.reorderSessionTab", { task, index }),
+                  }}
+                />
+              </div>
+            </ToolWindowHeader>
             <div className={styles.dockedSession}>
               {homeOpen && (
                 <div

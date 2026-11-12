@@ -149,8 +149,9 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 4px;
   min-width: 0;
+}
+.docked > header {
   border-bottom: 1px solid var(--border);
 }
 .sessionTabs {
