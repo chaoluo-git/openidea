@@ -118,7 +118,7 @@ test("restores and maximizes the diff window and remembers the chosen size mode"
   await expect.poll(async () => (await viewer.boundingBox())!.height).toBe(650);
 });
 
-test("keeps native macOS window controls above a maximized diff", async ({ workbench: page }) => {
+test("covers the macOS project title bar and restores its native controls", async ({ workbench: page }) => {
   const panel = await prepare(page);
   await page.evaluate(async () => {
     const path = "/src/platform/platformInfo.ts";
@@ -128,11 +128,20 @@ test("keeps native macOS window controls above a maximized diff", async ({ workb
   const viewer = page.getByRole("dialog", { name: "a.ts (HEAD ↔ Your version)", exact: true });
   await expect(viewer).toHaveAttribute("data-maximized", "true");
   const bounds = (await viewer.boundingBox())!;
-  const titlebar = await page.evaluate(() =>
-    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--h-titlebar")),
-  );
-  expect(bounds.y).toBe(titlebar);
-  expect(bounds.height).toBe(page.viewportSize()!.height - titlebar);
+  expect(bounds.y).toBe(0);
+  expect(bounds.height).toBe(page.viewportSize()!.height);
+  await expect
+    .poll(() => ipcCalls(page, "window_set_titlebar_height"))
+    .toContainEqual(expect.objectContaining({ height: 28 }));
+  await expect(
+    viewer.locator("[data-dialog-titlebar]").getByRole("button", { name: "Close", exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(viewer).toBeHidden();
+  await expect(panel).toBeVisible();
+  await expect
+    .poll(() => ipcCalls(page, "window_set_titlebar_height"))
+    .toContainEqual(expect.objectContaining({ height: 40 }));
 });
 
 test("retains explicit editor-tab placement and the one-off New Tab context action", async ({ workbench: page }) => {

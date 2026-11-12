@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as ipc from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import * as services from "@/workbench/contributions";
+import { openLayer } from "@/ui/popupState";
 import { installCloseGuard, type CloseDeps } from "../closeGuard";
 
 const native = vi.hoisted(() => ({
@@ -123,4 +124,32 @@ describe("native window close", () => {
     expect(keep).toHaveBeenCalledOnce();
     expect(deps.onSaveFailed).toHaveBeenCalledOnce();
   });
+});
+
+it("closes the front dialog instead of leaving the project or saving tabs", async () => {
+  const dismiss = vi.fn();
+  const layer = openLayer(() => null, dismiss);
+  try {
+    const prevented = await close({ closeWithoutWelcome: true, closeTabsWithWindow: true });
+    expect(prevented).toHaveBeenCalledOnce();
+    expect(dismiss).toHaveBeenCalledOnce();
+    expect(ipc.commands.closeProject).not.toHaveBeenCalled();
+    expect(forget).not.toHaveBeenCalled();
+    expect(deps.ask).not.toHaveBeenCalled();
+  } finally {
+    layer.release();
+  }
+});
+
+it("does not consume an explicit application quit as a dialog close", async () => {
+  const dismiss = vi.fn();
+  const layer = openLayer(() => null, dismiss);
+  vi.mocked(ipc.commands.windowCloseContext).mockResolvedValue({ quitting: true, windows: 2 });
+  try {
+    const prevented = await close({});
+    expect(prevented).not.toHaveBeenCalled();
+    expect(dismiss).not.toHaveBeenCalled();
+  } finally {
+    layer.release();
+  }
 });

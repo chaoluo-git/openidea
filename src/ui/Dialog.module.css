@@ -98,6 +98,9 @@
   padding: 0 12px 0 8px;
   gap: 12px;
 }
+.nativeTitleBar {
+  padding-left: calc(76px / var(--titlebar-zoom, 1));
+}
 .popupHeader {
   height: 32px;
   flex: none;

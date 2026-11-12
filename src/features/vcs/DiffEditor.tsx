@@ -54,6 +54,7 @@ import {
 } from "./diffOptions";
 import {
   chainNeighbour,
+  diffKey,
   diffTitle,
   detectLineEnding,
   liveSideText,
@@ -247,7 +248,14 @@ export function DiffEditor({
     return data.mode ? { ...saved, mode: data.mode } : saved;
   });
   const [lang, setLang] = useState<Extension | null>(null);
-  const [chunkInfo, setChunkInfo] = useState({ count: 0, current: -1, moves: 0, whitespaceOnly: false });
+  const [chunkInfo, setChunkInfo] = useState({
+    count: 0,
+    current: -1,
+    moves: 0,
+    whitespaceOnly: false,
+    previous: false,
+    next: false,
+  });
   const [busy, setBusy] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewsRef = useRef<Views | null>(null);
@@ -343,15 +351,19 @@ export function DiffEditor({
     const chunks = getChunks(v.state)?.chunks ?? [];
     const head = v.state.selection.main.head;
     const current = chunks.findIndex((c) => c.fromB <= head && head <= Math.max(c.fromB, c.endB));
+    const previous = chunks.some((c) => c.fromB < head);
+    const next = chunks.some((c) => c.fromB > head);
     const { moves, whitespaceOnly } = getDiffInsights(chunks);
     setChunkInfo((p) =>
       !docChanged &&
       p.count === chunks.length &&
       p.current === current &&
+      p.previous === previous &&
+      p.next === next &&
       p.moves === moves.length &&
       p.whitespaceOnly === whitespaceOnly
         ? p
-        : { count: chunks.length, current, moves: moves.length, whitespaceOnly },
+        : { count: chunks.length, current, moves: moves.length, whitespaceOnly, previous, next },
     );
   }, []);
 
@@ -673,6 +685,22 @@ export function DiffEditor({
     updateChunkInfo();
   }, [ready, statics, revealKey, data.line, data.lineSide, data.reveal, updateChunkInfo]);
 
+  const [changedNeighbours, setChangedNeighbours] = useState<{ previous?: DiffData | null; next?: DiffData | null }>(
+    {},
+  );
+  useEffect(() => {
+    setChangedNeighbours({});
+    if (!ready) return;
+    const controller = new AbortController();
+    for (const dir of [-1, 1] as const) {
+      void changedChainNeighbour(data, dir, opts.ignore, controller.signal).then((next) => {
+        if (!controller.signal.aborted)
+          setChangedNeighbours((state) => ({ ...state, [dir === 1 ? "next" : "previous"]: next }));
+      });
+    }
+    return () => controller.abort();
+  }, [data, ready, opts.ignore, version]);
+
   // IDEA: past the last (first) difference F7 (Shift+F7) first hints, then moves along the chain.
   const [navHint, setNavHint] = useState<string | null>(null);
   const pendingFile = useRef<0 | 1 | -1>(0);
@@ -717,8 +745,8 @@ export function DiffEditor({
       const start = (c: Chunk) => (onA ? c.fromA : c.fromB);
       const more = dir === 1 ? chunks.some((c) => start(c) > head) : chunks.some((c) => start(c) < head);
       if (!more) {
-        const neighbour = chainNeighbour(data, dir);
-        if (!neighbour) return;
+        const neighbour = dir === 1 ? changedNeighbours.next : changedNeighbours.previous;
+        if (neighbour === null || (neighbour === undefined && !chainNeighbour(data, dir))) return;
         if (pendingFile.current === dir) {
           pendingFile.current = 0;
           setNavHint(null);
@@ -774,7 +802,7 @@ export function DiffEditor({
       }
       updateChunkInfo();
     },
-    [updateChunkInfo, data, openNeighbour],
+    [updateChunkInfo, changedNeighbours, data, openNeighbour],
   );
 
   // A file-backed side is the source; for a diff of revisions (Git Log, Compare) the
@@ -945,7 +973,10 @@ export function DiffEditor({
     return true;
   };
   const file = (dir: 1 | -1) => {
-    void openNeighbour(dir);
+    const neighbour = chainNeighbour(data, dir);
+    if (!neighbour) return;
+    if (onNeighbour) onNeighbour(neighbour);
+    else void openDiff(neighbour, { preview: true });
   };
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   /** The viewer settings menu, under the toolbar's gear (`from`) or its start. */
@@ -1102,6 +1133,7 @@ export function DiffEditor({
   // Staging applies to local changes against HEAD / the index only.
   const canStage = editableB && isWorktree(right) && left.type === "rev" && !!useVcs.getState().root;
   const hasSource = !!source;
+  const chainIndex = data.chain?.findIndex((entry) => diffKey(entry) === diffKey(data)) ?? -1;
 
   return (
     <div
@@ -1124,6 +1156,7 @@ export function DiffEditor({
           title="Previous Difference"
           shortcut={shortcutLabel("diff.prevDifference")}
           size="small"
+          disabled={!ready || binary === true || !(chunkInfo.previous || changedNeighbours.previous)}
           onClick={() => step(-1)}
         />
         <IconButton
@@ -1131,6 +1164,7 @@ export function DiffEditor({
           title="Next Difference"
           shortcut={shortcutLabel("diff.nextDifference")}
           size="small"
+          disabled={!ready || binary === true || !(chunkInfo.next || changedNeighbours.next)}
           onClick={() => step(1)}
         />
         {data.chain && (
@@ -1143,6 +1177,9 @@ export function DiffEditor({
               disabled={!chainNeighbour(data, -1)}
               onClick={() => file(-1)}
             />
+            {chainIndex >= 0 && (
+              <span className={styles.fileCount} title={path}>{tx`${chainIndex + 1}/${data.chain.length} files`}</span>
+            )}
             <IconButton
               icon="arrow-right"
               title="Compare Next File"

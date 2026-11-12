@@ -20,6 +20,12 @@
 .toolbar > * {
   flex-shrink: 0;
 }
+.fileCount {
+  color: var(--accent);
+  font-size: var(--fs-small);
+  padding: 0 4px;
+  white-space: nowrap;
+}
 .sep {
   width: 1px;
   height: 14px;

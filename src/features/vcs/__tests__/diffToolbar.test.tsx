@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { EditorInput } from "@/workbench/contributions";
 import { Chunk, getChunks } from "@codemirror/merge";
 import { Text } from "@codemirror/state";
@@ -395,7 +395,8 @@ it.each([
   const view = EditorView.findFromDOM(document.querySelectorAll<HTMLElement>(".cm-mergeViewEditor .cm-editor")[1]!)!;
   const chunks = getChunks(view.state)!.chunks;
   const chunk = dir === 1 ? chunks[chunks.length - 1]! : chunks[0]!;
-  view.dispatch({ selection: { anchor: chunk.fromB } });
+  act(() => view.dispatch({ selection: { anchor: chunk.fromB } }));
+  await waitFor(() => expect(screen.getByRole("button", { name: button })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: button }));
   expect(await screen.findByText(hint)).toBeInTheDocument();
   expect(openInput).not.toHaveBeenCalled();
@@ -628,7 +629,8 @@ describe("Diff navigation caret", () => {
     const { mounted, view } = await reveal(mode);
     try {
       const button = await screen.findByRole("button", { name: label });
-      if (fromEnd) view().dispatch({ selection: { anchor: view().state.doc.length } });
+      if (fromEnd) act(() => view().dispatch({ selection: { anchor: view().state.doc.length } }));
+      await waitFor(() => expect(button).toBeEnabled());
       // A click leaves focus on the button, outside the panes.
       button.focus();
       expect(view().hasFocus).toBe(false);
@@ -648,6 +650,7 @@ describe("Diff navigation caret", () => {
     const { mounted, view } = await reveal("split");
     try {
       const next = await screen.findByRole("button", { name: "Next Difference" });
+      await waitFor(() => expect(next).toBeEnabled());
       next.focus();
       expect(view().hasFocus).toBe(false);
       next.dispatchEvent(new KeyboardEvent("keydown", { key: "F7", code: "F7", bubbles: true, cancelable: true }));

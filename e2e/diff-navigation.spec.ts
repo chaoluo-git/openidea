@@ -179,3 +179,39 @@ for (const reducedMotion of ["reduce", "no-preference"] as const) {
     }
   });
 }
+
+test("shows the reviewed file position and disables navigation beyond the final textual change", async ({
+  workbench: page,
+}) => {
+  const toolbar = await openChain(page);
+  await expect(toolbar).toContainText("1/2 files");
+  await expect(toolbar.getByRole("button", { name: "Compare Previous File", exact: true })).toBeDisabled();
+  await toolbar.getByRole("button", { name: "Compare Next File", exact: true }).click();
+  await expect(toolbar).toContainText("2/2 files");
+  await expect(toolbar.getByRole("button", { name: "Compare Next File", exact: true })).toBeDisabled();
+  await expect(toolbar.getByRole("button", { name: "Next Difference", exact: true })).toBeDisabled();
+  await expect(toolbar.getByRole("button", { name: "Previous Difference", exact: true })).toBeEnabled();
+
+  await page.evaluate(async () => {
+    const path = "/src/features/vcs/diffInput.ts";
+    const { openDiff, withChain } = await import(path);
+    const files = ["changed.ts", "empty.ts"].map((name, index) => ({
+      path: `/dev/acme-api/${name}`,
+      left: { type: "text", text: "before\n", label: "HEAD" },
+      right: { type: "text", text: index ? "before\n" : "after\n", label: "Working tree" },
+    }));
+    await openDiff(withChain(files, 0), { preview: true });
+  });
+  await expect(toolbar).toContainText("1/2 files");
+  await expect(toolbar.getByRole("button", { name: "Next Difference", exact: true })).toBeDisabled();
+  await toolbar.getByRole("button", { name: "Compare Next File", exact: true }).click();
+  await expect(toolbar).toContainText("2/2 files");
+  await expect(toolbar).toContainText("Contents are identical");
+  await expect(toolbar.getByRole("button", { name: "Next Difference", exact: true })).toBeDisabled();
+  await expect(toolbar.getByRole("button", { name: "Previous Difference", exact: true })).toBeEnabled();
+  await expect(toolbar.getByRole("button", { name: "Compare Next File", exact: true })).toBeDisabled();
+  await toolbar.getByRole("button", { name: "Previous Difference", exact: true }).click();
+  await page.keyboard.press("Shift+F7");
+  await expect(toolbar).toContainText("1/2 files");
+  await expect(toolbar.getByRole("button", { name: "Previous Difference", exact: true })).toBeDisabled();
+});

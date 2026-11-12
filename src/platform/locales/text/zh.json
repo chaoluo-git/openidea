@@ -1,4 +1,5 @@
 {
+  "{0}/{1} files": "第 {0}/{1} 个文件",
   "Capture Heap Snapshot": "捕获堆快照",
   "Open Heap Dump…": "打开堆转储…",
   "Save Heap Dump As…": "堆转储另存为…",
