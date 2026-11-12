@@ -862,6 +862,7 @@ test("edits an earlier Copilot message with a visible restart confirmation", asy
       return null;
     });
   }, TASK.id);
+  await page.getByRole("group", { name: "You", exact: true }).nth(1).hover();
   await page.getByRole("button", { name: "Edit & Rerun", exact: true }).nth(1).click();
   const edit = page.getByRole("textbox", { name: "Message", exact: true }).first();
   await expect(edit).toHaveValue("Original follow up");
