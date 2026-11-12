@@ -9,6 +9,7 @@ import { setContext } from "@/platform/context";
 interface Layer {
   id: number;
   el: () => HTMLElement | null;
+  closeWindow?: () => void;
 }
 
 const layers: Layer[] = [];
@@ -26,8 +27,8 @@ export interface LayerHandle {
   release(): void;
 }
 
-export function openLayer(el: () => HTMLElement | null): LayerHandle {
-  const layer = { id: ++seq, el };
+export function openLayer(el: () => HTMLElement | null, closeWindow?: () => void): LayerHandle {
+  const layer = { id: ++seq, el, closeWindow };
   layers.push(layer);
   publish();
   let released = false;
@@ -105,4 +106,12 @@ export function trapTab(e: KeyboardEvent, root: HTMLElement): boolean {
     return true;
   }
   return false;
+}
+
+/** A native window close dismisses its front dialog before it can close the project. */
+export function closeWindowLayer(): boolean {
+  const dialog = layers.findLast((layer) => layer.closeWindow);
+  if (!dialog) return false;
+  dialog.closeWindow!();
+  return true;
 }

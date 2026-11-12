@@ -103,7 +103,7 @@ export function sideLabel(s: DiffSide): string {
   }
 }
 
-const diffKey = (data: DiffData) => `diff:${data.path}:${sideKey(data.left)}:${sideKey(data.right)}`;
+export const diffKey = (data: DiffData) => `diff:${data.path}:${sideKey(data.left)}:${sideKey(data.right)}`;
 
 export function diffInput(data: DiffData): EditorInput {
   return { kind: DIFF_KIND, key: diffKey(data), path: data.path, data };

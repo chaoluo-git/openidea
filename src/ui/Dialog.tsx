@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { usePlatform } from "@/platform/platformInfo";
@@ -126,6 +126,9 @@ export interface DialogProps {
   onResized?: (size: { w: number; h: number }) => void;
   /** Fill the work area while keeping the normal size available for restoring. */
   maximized?: boolean;
+  /** Fill the native title-bar band when maximized; the caller aligns its native controls. */
+  coverTitleBar?: boolean;
+  titleBarRef?: Ref<HTMLDivElement>;
   onToggleMaximize?: () => void;
   /**
    * `top` places a lightweight modal popup (choosers, Search Everywhere) near
@@ -225,6 +228,8 @@ function DialogInner({
   initialSize,
   onResized,
   maximized = false,
+  coverTitleBar = false,
+  titleBarRef,
   onToggleMaximize,
   position = "center",
   className,
@@ -277,7 +282,10 @@ function DialogInner({
   }, [cancelOnDeactivate]);
 
   useEffect(() => {
-    const layer = openLayer(() => ref.current);
+    const layer = openLayer(
+      () => ref.current,
+      () => onCloseRef.current(),
+    );
     let previous = document.activeElement as HTMLElement | null;
     const el = ref.current;
     // Content first (an alert's checkbox is not content), then the default button; never the title bar's close button.
@@ -415,7 +423,7 @@ function DialogInner({
         styles.backdrop,
         position === "top" && styles.top,
         maximized && styles.maximizedBackdrop,
-        overlayTitleBar && styles.belowTitleBar,
+        overlayTitleBar && !(coverTitleBar && maximized) && styles.belowTitleBar,
       )}
       onPointerDown={(e) => {
         if ((dismissOnBackdrop ?? popup) && e.target === e.currentTarget) onClose();
@@ -451,27 +459,38 @@ function DialogInner({
             </div>
           )
         ) : platform === "mac" ? (
-          <div className={clsx(styles.titleBar, styles.macTitleBar)} data-dialog-drag="" data-dialog-titlebar="">
-            <span className={styles.lights}>
-              <button
-                type="button"
-                tabIndex={-1}
-                className={clsx(styles.light, styles.lightClose)}
-                aria-label={tx("Close")}
-                onClick={onClose}
-              >
-                <Icon name="close" size={10} className={styles.lightGlyph} />
-              </button>
-              <button type="button" tabIndex={-1} disabled className={styles.light} aria-label={tx("Minimize")} />
-              <button
-                type="button"
-                tabIndex={-1}
-                disabled={!onToggleMaximize}
-                className={clsx(styles.light, onToggleMaximize && styles.lightZoom)}
-                aria-label={tx(maximized ? "Restore Size" : "Zoom")}
-                onClick={onToggleMaximize}
-              />
-            </span>
+          <div
+            ref={titleBarRef}
+            className={clsx(
+              styles.titleBar,
+              styles.macTitleBar,
+              overlayTitleBar && coverTitleBar && maximized && styles.nativeTitleBar,
+            )}
+            data-dialog-drag=""
+            data-dialog-titlebar=""
+          >
+            {!(overlayTitleBar && coverTitleBar && maximized) && (
+              <span className={styles.lights}>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className={clsx(styles.light, styles.lightClose)}
+                  aria-label={tx("Close")}
+                  onClick={onClose}
+                >
+                  <Icon name="close" size={10} className={styles.lightGlyph} />
+                </button>
+                <button type="button" tabIndex={-1} disabled className={styles.light} aria-label={tx("Minimize")} />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  disabled={!onToggleMaximize}
+                  className={clsx(styles.light, onToggleMaximize && styles.lightZoom)}
+                  aria-label={tx(maximized ? "Restore Size" : "Zoom")}
+                  onClick={onToggleMaximize}
+                />
+              </span>
+            )}
             <span className={styles.title}>{title}</span>
           </div>
         ) : (

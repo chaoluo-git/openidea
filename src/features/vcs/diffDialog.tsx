@@ -7,6 +7,8 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { bindingsFor, normalizeBinding, registerKeyClaim } from "@/platform/keymap";
+import { usePlatform } from "@/platform/platformInfo";
+import { useNativeTitlebar } from "@/workbench/nativeTitlebar";
 import { Dialog, IconButton } from "@/ui";
 import type { EditorInput } from "@/workbench/contributions";
 import { DiffEditor } from "./DiffEditor";
@@ -73,6 +75,8 @@ export function openMergeDiffDialog(input: EditorInput): () => void {
 
 function FrontWindow({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const body = useRef<HTMLDivElement>(null);
+  const [titlebar, setTitlebar] = useState<HTMLDivElement | null>(null);
+  const overlay = usePlatform((state) => state.overlayTitleBar);
   const [maximized, setMaximized] = useState(() => {
     try {
       return localStorage.getItem(MAXIMIZED_KEY) !== "false";
@@ -123,6 +127,8 @@ function FrontWindow({ title, onClose, children }: { title: string; onClose: () 
       initialSize={initialSize}
       onResized={saveDiffDialogSize}
       maximized={maximized}
+      coverTitleBar
+      titleBarRef={setTitlebar}
       onToggleMaximize={toggleMaximized}
       footerStart={
         <IconButton
@@ -133,6 +139,7 @@ function FrontWindow({ title, onClose, children }: { title: string; onClose: () 
       }
       buttons={[{ label: "Close", role: "cancel" }]}
     >
+      {overlay && maximized && <NativeDiffTitlebar bar={titlebar} />}
       <div ref={body} className={styles.body}>
         {children}
       </div>
@@ -148,4 +155,10 @@ function DiffDialog({ data: initial, onClose }: { data: DiffData; onClose: () =>
       <DiffEditor key={input.key} input={input} onNeighbour={setData} onJumpToSource={onClose} />
     </FrontWindow>
   );
+}
+
+/** Mount only while maximized so restoring hands the native controls back to the project header. */
+function NativeDiffTitlebar({ bar }: { bar: HTMLElement | null }) {
+  useNativeTitlebar(bar);
+  return null;
 }

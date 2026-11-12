@@ -23,6 +23,7 @@ import {
   stopRunningProcesses,
   type EditorCloseSession,
 } from "@/workbench/contributions";
+import { closeWindowLayer } from "@/ui/popupState";
 import { beginTermination, endTermination } from "./termination";
 import { ask, type Ask } from "@/workbench/messages";
 import { AUX_CLOSED, auxiliaryWindow, closeDocumentWindows, type AuxCloseResult } from "@/platform/auxWindow";
@@ -217,6 +218,10 @@ async function onCloseRequested(deps: CloseDeps): Promise<boolean> {
   };
   try {
     const ctx = await commands.windowCloseContext();
+    if (!ctx.quitting && closeWindowLayer()) {
+      await commands.windowGroupCancelClose();
+      return false;
+    }
     if (!(await closeDocumentWindows())) {
       await (ctx.quitting ? commands.appCancelQuit() : commands.windowGroupCancelClose());
       return false;

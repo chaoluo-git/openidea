@@ -69,6 +69,8 @@ Check **Amend** (`⌃⌥M` / `Alt+M`) to amend the last commit; the button chang
 
 Double-click a file (or press `Enter`) to see its diff; **Preview Diff** shows it next to the tree. The file context menu has **Show Diff**, **Jump to Source**, **Rollback…**, **Add to VCS**, **Add to .gitignore**, **Stage**, **Unstage**, **Move to Another Changelist…**, **Shelve Changes…**, **Create Patch…**, **Copy as Patch to Clipboard**, **Show History**, **Show Local History** and **Annotate with Git Blame**.
 
+The maximized viewer covers the project header and uses the window close button to return to the project. The toolbar shows your position in the file list; file arrows visit adjacent files, while difference arrows skip unchanged files and disable at the ends.
+
 ### Partial commits
 
 To commit only part of a file, open its diff from the Commit tool window. Each changed block has an **Include in commit** checkbox in the gutter; uncheck the blocks to leave out. The file's checkbox in the tree becomes partly checked. OpenIDEA commits the selected blocks through a temporary index, so your working tree and staging area stay as they are. Selection works per block, not per line.
