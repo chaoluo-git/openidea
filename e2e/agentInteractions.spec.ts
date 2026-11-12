@@ -206,6 +206,7 @@ test("uses readable reasoning text and a centered floating jump button", async (
   await expect(stream.locator("[class*='_processRun_'] > summary")).toHaveCount(0);
   await expect(stream.getByText("Read 1 file", { exact: true })).toHaveCount(1);
   const thought = stream.locator("[class*='_thought_'] > summary");
+  await expect(thought).toHaveText("Thoughts");
   await expect(thought).toHaveCSS("font-size", "15px");
   await thought.click();
   await expect(stream.getByText("Checking the source and its tests.", { exact: false }).last()).toHaveCSS(

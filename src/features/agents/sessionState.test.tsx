@@ -377,9 +377,10 @@ describe("process folding", () => {
     };
     expect(screen.queryByText("think one")).toBeNull();
     open(fold);
-    // A folded thought shows its first line; opening it shows the rest.
-    const thought = (await screen.findByText("think one")).closest("details")!;
+    // The stable heading avoids repeating the first line above the full reasoning.
+    const thought = (await screen.findAllByText("Thoughts"))[0]!.closest("details")!;
     expect(thought.open).toBe(false);
+    expect(screen.queryByText("think one")).toBeNull();
     open(thought);
     expect(thought.querySelector(`.${styles.thoughtBody}`)).toHaveTextContent("think one");
   });
@@ -421,7 +422,11 @@ describe("turn folding", () => {
     expect(fold).toHaveClass(styles.turnFold!);
     fold.open = true;
     fireEvent(fold, new Event("toggle"));
-    expect(await screen.findByText("Check the source")).toBeInTheDocument();
+    const thought = (await screen.findByText("Thoughts")).closest("details")!;
+    expect(screen.queryByText("Check the source")).toBeNull();
+    thought.open = true;
+    fireEvent(thought, new Event("toggle"));
+    expect(screen.getAllByText("Check the source")).toHaveLength(1);
     expect(screen.getAllByText("Read 1 file")).toHaveLength(1);
     expect(fold.querySelector(`.${styles.processRun}`)).toBeNull();
     expect(fold.querySelector(`.${styles.processBodyInline}`)).not.toBeNull();
@@ -647,7 +652,7 @@ describe("scrolling", () => {
       tasks: new Map(useAgents.getState().tasks).set("A", { ...task("A"), status: "running" }),
     });
     render(<SessionEditor input={input("A")} />);
-    const summary = await screen.findByText("Read this reasoning");
+    const summary = await screen.findByText("Thoughts");
     const el = stream();
     const body = within(el).getByRole("region", { name: "Output" });
     let height = 1000;
@@ -687,7 +692,7 @@ describe("scrolling", () => {
     const thought: AgentEntry = { type: "thought", text: "Reasoning being read" };
     useAgents.setState({ entries: new Map([["A", [thought]]]) });
     render(<SessionEditor input={input("A")} />);
-    const summary = await screen.findByText("Reasoning being read");
+    const summary = await screen.findByText("Thoughts");
     fireEvent.click(summary);
     const details = summary.closest("details")!;
     details.open = true;

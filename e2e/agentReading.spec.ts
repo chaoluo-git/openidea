@@ -79,14 +79,16 @@ for (const activation of ["click", "Enter", "Space"] as const) {
     );
     const stream = page.locator("[class*='_stream_']:visible");
     await expect.poll(() => stream.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(2);
-    const thought = stream.locator("[class*='_thought_']").filter({ hasText: "Reading marker" });
+    const thought = stream.locator("[class*='_thought_']");
     const summary = thought.locator(":scope > summary");
+    await expect(summary).toHaveText("Thoughts");
     if (activation === "click") await summary.click();
     else {
       await summary.focus();
       await page.keyboard.press(activation);
     }
     await expect(thought).toHaveAttribute("open", "");
+    await expect(thought.getByText("Reading marker", { exact: true })).toBeVisible();
     const top = await stream.evaluate((el) => el.scrollTop);
     const body = stream.locator("[class*='_processBody_']");
     const inner = await body.evaluate((el) => el.scrollTop);

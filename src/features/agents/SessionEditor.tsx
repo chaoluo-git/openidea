@@ -1238,15 +1238,6 @@ function AgentMessage({
   );
 }
 
-/** The first line of reasoning, without its Markdown emphasis: what a folded thought was about. */
-export function thoughtPreview(text: string): string {
-  const line = text.split("\n").find((l) => l.trim()) ?? "";
-  return line
-    .replace(/^\s*(#+\s*|[-*]\s+)?/, "")
-    .replace(/[*_`]+/g, "")
-    .trim();
-}
-
 /** Live reasoning stays readable; historical conversations use Settings › Agents › Chat defaults. */
 function ThoughtEntry({
   index,
@@ -1277,14 +1268,10 @@ function ThoughtEntry({
         autoOpen={thinking === "auto" && working}
         summary={
           <summary>
+            <span className={working ? styles.shimmer : undefined}>
+              <T>Thoughts</T>
+            </span>
             <Icon name="chevron-right" size={12} className={styles.thoughtChevron} />
-            {working ? (
-              <span className={styles.shimmer}>
-                <T>Thinking</T>
-              </span>
-            ) : (
-              <span className={styles.thoughtPreview}>{thoughtPreview(text) || <T>Reasoning</T>}</span>
-            )}
           </summary>
         }
       >

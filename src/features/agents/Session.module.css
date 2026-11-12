@@ -788,12 +788,6 @@
 .thoughtChevron {
   flex: none;
 }
-.thoughtPreview {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .thought[open] .thoughtChevron {
   transform: rotate(90deg);
 }
