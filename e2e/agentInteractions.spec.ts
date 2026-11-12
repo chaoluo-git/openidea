@@ -88,6 +88,46 @@ test("fills the conversation width with the composer while keeping prose readabl
   }
 });
 
+for (const { theme, width } of [
+  { theme: "light", width: 1400 },
+  { theme: "dark", width: 760 },
+]) {
+  test(`shares one header row between session tabs and window actions in ${theme} at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openChat(page);
+    await page.evaluate(async (theme) => {
+      const path = "/src/platform/project.ts";
+      (await import(path)).useProject.setState({ settings: { theme } });
+    }, theme);
+    const agents = page.getByRole("region", { name: "Agents", exact: true });
+    const tabs = agents.getByRole("tablist", { name: "Agent sessions", exact: true });
+    await expect(tabs).toBeVisible();
+    if (process.env.OPENIDEA_HEADER_SCREENSHOTS) {
+      await page.screenshot({
+        path: `${process.env.OPENIDEA_HEADER_SCREENSHOTS}/header-${theme}-${width}.png`,
+        animations: "disabled",
+      });
+    }
+    await expect(agents.locator("header")).toHaveCount(1);
+    const header = agents.locator("header");
+    await expect(header.getByRole("tablist", { name: "Agent sessions", exact: true })).toBeVisible();
+    const box = (await header.boundingBox())!;
+    const tabBox = (await tabs.boundingBox())!;
+    expect(tabBox.y).toBeGreaterThanOrEqual(box.y);
+    expect(tabBox.y + tabBox.height).toBeLessThanOrEqual(box.y + box.height);
+    await header.hover();
+    for (const name of ["New Agent Task", "External MCP Servers…", "Options", "Hide"]) {
+      await expect(header.getByRole("button", { name, exact: true })).toBeVisible();
+    }
+    await header.getByRole("button", { name: "Agent sessions", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Agent sessions", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await header.getByRole("button", { name: "New Agent Task", exact: true }).click();
+    await expect(header.getByRole("tab", { name: /New Agent Task/ })).toHaveAttribute("aria-selected", "true");
+    await expect(agents.locator("header")).toHaveCount(1);
+  });
+}
+
 for (const theme of ["light", "dark"] as const) {
   test(`keeps sent messages soft and their controls available on hover or focus in ${theme}`, async ({ page }) => {
     const text = "查看当前 k8s，用 table 的形式展示出来";
