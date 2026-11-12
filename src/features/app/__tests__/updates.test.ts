@@ -235,6 +235,16 @@ describe("Check for Updates", () => {
             anchor: "right",
             component: NotificationsToolWindow,
           });
+          const disposeMaximized =
+            mode === "maximized"
+              ? registerToolWindow({
+                  id: "updates-test-project",
+                  title: "Project",
+                  icon: "folder",
+                  anchor: "left",
+                  component: () => null,
+                })
+              : () => {};
           useProject.setState({
             project: windowKind === "project" ? ({ root: "/p", name: "p" } as never) : null,
             lightEdit: windowKind === "lightEdit",
@@ -243,7 +253,11 @@ describe("Check for Updates", () => {
             } as unknown as Settings,
           });
           useToolWindowLayout.setState({
-            visible: { ...previousLayout.visible, right: "notifications" },
+            visible: {
+              ...previousLayout.visible,
+              left: mode === "maximized" ? "updates-test-project" : previousLayout.visible.left,
+              right: "notifications",
+            },
             maximized: mode === "maximized" ? "left" : null,
           });
           useNotifications.setState({ items: [] });
@@ -287,6 +301,7 @@ describe("Check for Updates", () => {
             view.unmount();
             list?.unmount();
             dispose();
+            disposeMaximized();
             useNotifications.setState({ items: [] });
             useToolWindowLayout.setState(previousLayout);
           }
