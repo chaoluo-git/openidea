@@ -193,6 +193,8 @@ test("shows plan progress and real shell invocations in parent and subagent acti
     });
   });
   await expect(stream.getByText("3/3", { exact: true })).toBeVisible();
+  await expect(plan).toBeVisible();
+  await stream.locator("[class*='_plan_'] > summary").click();
   await expect(plan).toBeHidden();
   await child.getByRole("button", { name: /Explore dependencies/ }).click();
   await expect(page.getByText("Subagents take their instructions from the agent that started them.")).toBeVisible();

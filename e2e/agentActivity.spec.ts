@@ -149,6 +149,8 @@ for (const theme of ["light", "dark"] as const)
           ),
         });
       });
+      await expect(running).toHaveAttribute("open", "");
+      await running.locator(":scope > summary").click();
       await expect(running).not.toHaveAttribute("open");
       await file.getByRole("button", { name: "Open full diff" }).click();
       const diffTab = page.getByRole("tab", { name: /adddeps.py \(Before ↔ After\)/ });

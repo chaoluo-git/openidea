@@ -24,6 +24,16 @@ async function copyText(arg: unknown, title: string) {
 
 export const codeBlockActions: Action[] = [
   {
+    id: "agents.toggleOutputPreview",
+    title: "Show full output",
+    category: "Agents",
+    hidden: true,
+    run: ({ arg }) => {
+      const target = arg as { toggle?: () => void } | undefined;
+      if (typeof target?.toggle === "function") target.toggle();
+    },
+  },
+  {
     id: "agents.copyCode",
     title: "Copy Code",
     category: "Agents",

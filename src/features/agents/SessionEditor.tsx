@@ -1,6 +1,5 @@
 /** An agent task as an editor tab: the conversation, a composer and the task's changed files. */
 import {
-  createContext,
   Fragment,
   memo,
   startTransition,
@@ -82,6 +81,13 @@ import { ToolCommand, ToolOutput } from "./ToolCommand";
 import { activityTitle, commandOutput, isFileAcknowledgement } from "./toolPresentation";
 import { MessageText } from "./MessageText";
 import { createFollowScroll } from "./followScroll";
+import {
+  ConversationScroll,
+  FoldedContent,
+  activityExpanded,
+  activityKey,
+  type ConversationScrollState,
+} from "./conversationDisclosure";
 import { useAgentErrorText } from "./loginHint";
 import {
   branchLabel,
@@ -529,6 +535,7 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
   const ref = useRef<HTMLDivElement>(null);
   useSelectionBoundary(ref);
   const [openFolds] = useState(() => new Map<string, boolean>());
+  const [revealedFolds] = useState(() => new Set<string>());
   const key = entriesKey(task.id, subagent?.id ?? null);
   const positions = useAgents.getState().scrollPositions;
   const position = useRef(positions.get(key) ?? { top: 0, stick: true });
@@ -611,8 +618,8 @@ function Stream({ loadError, task, entries, subagent, onOpenSubagent, finding, f
     setAway(true);
   }, [key, positions]);
   const conversationScroll = useMemo(
-    () => ({ opened: openFolds, pause: pauseForReading, following: () => position.current.stick }),
-    [openFolds, pauseForReading],
+    () => ({ opened: openFolds, revealed: revealedFolds, scope: "", pause: pauseForReading }),
+    [openFolds, revealedFolds, pauseForReading],
   );
   // Earlier entries are prepended above the view: remember where the first painted row is
   // so the content stays put and the scrollbar doesn't jump under the pointer.
@@ -1057,6 +1064,7 @@ function FindBar({
   const [query, setQuery] = useState("");
   const [ranges, setRanges] = useState<Range[]>([]);
   const [current, setCurrent] = useState(0);
+  useEffect(() => registerKeyClaim((event, stroke) => stroke === "Escape" && event.target === input.current), []);
 
   useEffect(() => {
     input.current?.focus();
@@ -1239,7 +1247,7 @@ export function thoughtPreview(text: string): string {
     .trim();
 }
 
-/** The agent's reasoning: open while it streams, folded after, as Settings › Agents › Chat says. */
+/** Live reasoning stays readable; historical conversations use Settings › Agents › Chat defaults. */
 function ThoughtEntry({
   index,
   task,
@@ -1264,8 +1272,9 @@ function ThoughtEntry({
     <div className={styles.process}>
       <Fold
         id={`thought:${index}`}
-        className={clsx(styles.thought, thinking === "auto" && working && styles.thoughtLive)}
-        open={open}
+        className={styles.thought}
+        open={thinking === "expanded"}
+        autoOpen={thinking === "auto" && working}
         summary={
           <summary>
             <Icon name="chevron-right" size={12} className={styles.thoughtChevron} />
@@ -1653,13 +1662,16 @@ function ImageStrip({ images, onRemove }: { images: AgentImage[]; onRemove?: (in
 
 type ToolEntryData = Extract<AgentEntry, { type: "tool" }>;
 
-function readingEntry(opened: Map<string, boolean> | undefined, entry: AgentEntry, index: number) {
+function expandedEntry(scroll: ConversationScrollState | null, entry: AgentEntry, index: number) {
   return (
-    opened?.get(`thought:${index}`) ||
-    opened?.get(`tool:${index}`) ||
-    opened?.get(`plan:${index}`) ||
-    (entry.type === "subagent" && opened?.get(`subagent:${entry.id}:activity`)) ||
-    (entry.type === "tool" && entry.diffs.some((diff, part) => opened?.get(`tool:${index}:${diff.path}:${part}`)))
+    activityExpanded(scroll, `thought:${index}`) ||
+    activityExpanded(scroll, `tool:${index}`) ||
+    activityExpanded(scroll, `tool:${index}:output`) ||
+    activityExpanded(scroll, `plan:${index}`) ||
+    (entry.type === "subagent" &&
+      ["activity", "task", "result"].some((part) => activityExpanded(scroll, `subagent:${entry.id}:${part}`))) ||
+    (entry.type === "tool" &&
+      entry.diffs.some((diff, part) => activityExpanded(scroll, `tool:${index}:${diff.path}:${part}`)))
   );
 }
 
@@ -1755,7 +1767,6 @@ function TurnFold({
 }) {
   const tx = useTx();
   const scroll = useContext(ConversationScroll);
-  const opened = scroll?.opened;
   const { turn } = row;
   const activity = entries.slice(turn.user + 1, turn.reply);
   const work = summarizeWork(activity);
@@ -1763,7 +1774,7 @@ function TurnFold({
   const messages = activity.filter((e) => e.type === "agent").length;
   const reading = activity.some((entry, offset) => {
     const index = turn.user + 1 + offset;
-    return readingEntry(opened, entry, index) || opened?.get(`run:${index}`);
+    return expandedEntry(scroll, entry, index) || activityExpanded(scroll, `run:${index}`);
   });
   if (messages) parts.push(tx(messages === 1 ? "1 message" : "{count} messages").replace("{count}", String(messages)));
   const took = turn.sentMs != null && turn.doneMs != null ? formatDuration(turn.doneMs - turn.sentMs) : null;
@@ -1806,36 +1817,21 @@ const ProcessRun = memo(function ProcessRun({
 }) {
   const tx = useTx();
   const scroll = useContext(ConversationScroll);
-  const opened = scroll?.opened;
   const tools = row.entries.filter(
     (item): item is IndexedEntry & { entry: ToolEntryData } => item.entry.type === "tool",
   );
   const work = summarizeWork(row.entries.map(({ entry }) => entry));
   const { added, removed } = work;
   const working = busy && row.entries.some(({ index }) => index === lastIndex);
-  const reading = row.entries.some(({ entry, index }) => readingEntry(opened, entry, index));
+  const reading = row.entries.some(({ entry, index }) => expandedEntry(scroll, entry, index));
   const parts = workSummaryText(work, tx, tools.length);
   // What the run is doing now: the call still running, or the reasoning it ends with.
   const live = [...tools].reverse().find(({ entry }) => liveTool(entry))?.entry;
   const running = working || (busy && !!live);
   const last = row.entries.at(-1)!.entry;
   const current = live ? activityTitle(live, task.cwd) : working && last.type === "thought" ? tx("Thinking") : null;
-  // While the run grows, its open body follows the latest call unless scrolled up.
-  const body = useRef<HTMLDivElement>(null);
-  const following = useRef(true);
-  useLayoutEffect(() => {
-    const el = body.current;
-    if (el && running && following.current && scroll?.following() !== false) el.scrollTop = el.scrollHeight;
-  });
   const content = (
-    <div
-      ref={body}
-      className={clsx(styles.processBody, !collapsible && styles.processBodyInline)}
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-      }}
-    >
+    <div className={clsx(styles.processBody, !collapsible && styles.processBodyInline)}>
       {row.entries.map(({ index, entry }) =>
         entry.type === "tool" ? (
           <ToolEntry key={index} task={task} entry={entry} index={index} />
@@ -1873,16 +1869,6 @@ const ProcessRun = memo(function ProcessRun({
   );
 });
 
-/** Set while Find in Conversation is open: folded sections render their content, so it is found. */
-const FoldedContent = createContext(false);
-
-/** Reading a fold pauses live scrollers and remembers opened content across row regrouping. */
-const ConversationScroll = createContext<{
-  opened: Map<string, boolean>;
-  pause: () => void;
-  following: () => boolean;
-} | null>(null);
-
 /**
  * A collapsed section that renders its content only once opened: most of a long conversation
  * stays folded, and keeping it out of the DOM keeps showing and restyling the tab cheap.
@@ -1907,14 +1893,17 @@ function Fold({
   const always = useContext(FoldedContent);
   const scroll = useContext(ConversationScroll);
   const remembered = scroll?.opened;
+  const revealed = scroll?.revealed;
+  const key = id ? activityKey(scroll, id) : undefined;
   const manual = useRef(false);
-  const automatic = useRef(autoOpen);
+  const [wasAutoOpened, setWasAutoOpened] = useState(autoOpen);
+  if (autoOpen && !wasAutoOpened) setWasAutoOpened(true);
   useLayoutEffect(() => {
-    // A manual collapse lasts for this live run; the next run can reveal its progress again.
-    if (automatic.current && !autoOpen && id && remembered?.get(id) === false) remembered.delete(id);
-    automatic.current = autoOpen;
-  }, [autoOpen, id, remembered]);
-  const wanted = (id ? remembered?.get(id) : undefined) ?? !!(open || autoOpen);
+    if (autoOpen && key) revealed?.add(key);
+  }, [autoOpen, key, revealed]);
+  // Finishing work never hides content already shown in this open conversation.
+  const wanted =
+    (key ? remembered?.get(key) : undefined) ?? !!(open || autoOpen || wasAutoOpened || (key && revealed?.has(key)));
   const [expanded, setExpanded] = useState(wanted);
   return (
     <details
@@ -1933,7 +1922,7 @@ function Fold({
       onToggle={(e) => {
         const now = e.currentTarget.open;
         if (manual.current || now !== wanted) {
-          if (id && remembered) remembered.set(id, now);
+          if (key && remembered) remembered.set(key, now);
           if (now && !manual.current) scroll?.pause();
         }
         manual.current = false;
@@ -2052,9 +2041,15 @@ const ToolEntry = memo(function ToolEntry({
         }
       >
         {entry.command ? (
-          <ToolCommand command={entry.command} cwd={task.cwd} output={output.text} running={liveTool(entry)} />
+          <ToolCommand
+            outputId={`tool:${index}:output`}
+            command={entry.command}
+            cwd={task.cwd}
+            output={output.text}
+            running={liveTool(entry)}
+          />
         ) : (
-          output.text && <ToolOutput text={output.text} framed />
+          output.text && <ToolOutput id={`tool:${index}:output`} text={output.text} framed />
         )}
       </Fold>
     </div>
@@ -2195,6 +2190,7 @@ function SubagentCard({
       )}
       {entry.prompt && (
         <Fold
+          id={`subagent:${entry.id}:task`}
           className={styles.subagentSection}
           summary={
             <summary>
@@ -2207,6 +2203,7 @@ function SubagentCard({
       )}
       {entry.reply && (
         <Fold
+          id={`subagent:${entry.id}:result`}
           className={styles.subagentSection}
           summary={
             <summary>
@@ -2223,7 +2220,7 @@ function SubagentCard({
   );
 }
 
-/** A bounded, read-only peek. The heading still opens the complete child conversation. */
+/** Recent child activity flows in the parent conversation; the heading opens the full session. */
 function SubagentActivity({
   task,
   entry,
@@ -2239,9 +2236,11 @@ function SubagentActivity({
   const connected = useAgents((s) => s.loaded);
   const [shown, setShown] = useState(40);
   const [firstShown, setFirstShown] = useState(Infinity);
-  const [opened] = useState(() => new Map<string, boolean>());
   const parent = useContext(ConversationScroll);
-  const scroll = useMemo(() => (parent ? { ...parent, opened } : null), [parent, opened]);
+  const scroll = useMemo(
+    () => (parent ? { ...parent, scope: activityKey(parent, `subagent:${encodeURIComponent(entry.id)}`) } : null),
+    [parent, entry.id],
+  );
   useEffect(() => {
     if (connected && !useAgents.getState().entries.has(key)) void loadEntries(task.id, entry.id);
   }, [connected, key, task.id, entry.id]);
