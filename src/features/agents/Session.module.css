@@ -176,24 +176,12 @@
   flex-direction: column;
   align-items: stretch;
 }
-/* Keep the author attached to the message. */
-.messageHead {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-2);
-  min-height: var(--h-control-small);
-  margin-bottom: calc(var(--space-2) / 2);
-}
 .messageTime {
   -webkit-user-select: none;
   user-select: none;
   color: var(--fg-subtle);
   font-size: var(--fs-small);
   white-space: nowrap;
-}
-.messageHead > .role {
-  margin-bottom: 0;
 }
 /* User cards and their footers share a right edge. */
 .userMessage {
@@ -205,9 +193,15 @@
   width: fit-content;
   max-width: min(var(--session-card-width), 720px);
 }
-.userMessage > .messageHead,
 .userMessage > .messageFooter {
   justify-content: flex-end;
+  opacity: 0;
+  pointer-events: none;
+}
+.userMessage:hover > .messageFooter,
+.userMessage:focus-within > .messageFooter {
+  opacity: 1;
+  pointer-events: auto;
 }
 /* The actions and time below a message, in flow so they never cover the next entry. */
 .messageFooter {
@@ -281,8 +275,7 @@
   -webkit-user-select: none;
   user-select: none;
 }
-.messageFooter > .messageTime,
-.messageHead > .messageTime {
+.messageFooter > .messageTime {
   opacity: 0;
 }
 /* A turn's final reply keeps its time and actions in view; your messages show theirs on hover. */
@@ -321,6 +314,10 @@
 }
 
 @media (hover: none) {
+  .userMessage > .messageFooter {
+    opacity: 1;
+    pointer-events: auto;
+  }
   .messageActions {
     opacity: 1;
     pointer-events: auto;
@@ -361,9 +358,9 @@
 .user {
   width: 100%;
   box-sizing: border-box;
-  padding: 6px 10px;
-  border-radius: var(--radius-tab);
-  background: var(--bg-hover);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--agent-message-radius);
+  background: var(--agent-message-bg);
   color: var(--agent-fg);
   font-size: var(--fs-input-large);
   line-height: 1.6;

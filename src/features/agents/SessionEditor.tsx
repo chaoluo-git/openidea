@@ -1415,12 +1415,7 @@ function UserMessage({
   // Images are listed after the files in `attachments` and shown as thumbnails instead.
   const files = entry.attachments.slice(0, entry.attachments.length - images.length);
   return (
-    <div className={clsx(styles.message, styles.userMessage)}>
-      <div className={styles.messageHead}>
-        <span className={styles.role}>
-          <T>You</T>
-        </span>
-      </div>
+    <div className={clsx(styles.message, styles.userMessage)} role="group" aria-label={tx("You")}>
       <div className={styles.user}>
         {editable && entry.text ? (
           <button

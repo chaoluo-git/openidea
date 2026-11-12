@@ -20,6 +20,8 @@ html {
   --space-4: 16px;
   --agent-conversation-width: 900px;
   --agent-fg: var(--fg);
+  --agent-message-bg: color-mix(in srgb, var(--bg-hover) 55%, var(--bg-island));
+  --agent-message-radius: 24px;
   --agent-code-keyword: var(--syn-keyword);
   --agent-code-string: var(--syn-string);
   --agent-code-comment: var(--syn-comment);
