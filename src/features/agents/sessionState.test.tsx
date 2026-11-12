@@ -314,7 +314,7 @@ describe("conversation rows", () => {
 });
 
 describe("process folding", () => {
-  it("opens live activity, respects manual collapse and opens it again on the next run", async () => {
+  it("opens new activity without reopening work the user collapsed", async () => {
     backend.entries.set("A", [tool("one"), tool("two")]);
     useAgents.setState({
       tasks: new Map([["A", { ...task("A"), status: "running" }]]),
@@ -335,7 +335,26 @@ describe("process folding", () => {
     act(() => useAgents.setState({ tasks: new Map([["A", task("A")]]) }));
     expect(fold.open).toBe(false);
     act(() => useAgents.setState({ tasks: new Map([["A", { ...task("A"), status: "running" }]]) }));
-    expect(fold.open).toBe(true);
+    expect(fold.open).toBe(false);
+    act(() => {
+      useAgents.setState({
+        entries: new Map([
+          [
+            "A",
+            [
+              tool("one"),
+              tool("two"),
+              tool("three"),
+              { type: "user", text: "Continue", attachments: [], steered: false },
+              tool("four", { status: "running" }),
+              tool("five", { status: "running" }),
+            ],
+          ],
+        ]),
+      });
+    });
+    expect((await screen.findByText("Read 2 files")).closest("details")!.open).toBe(true);
+    expect(fold.open).toBe(false);
   });
 
   it("folds reasoning and tool calls into one block", async () => {
@@ -358,9 +377,10 @@ describe("process folding", () => {
     };
     expect(screen.queryByText("think one")).toBeNull();
     open(fold);
-    // A folded thought shows its first line; opening it shows the rest.
-    const thought = (await screen.findByText("think one")).closest("details")!;
+    // The stable heading avoids repeating the first line above the full reasoning.
+    const thought = (await screen.findAllByText("Thoughts"))[0]!.closest("details")!;
     expect(thought.open).toBe(false);
+    expect(screen.queryByText("think one")).toBeNull();
     open(thought);
     expect(thought.querySelector(`.${styles.thoughtBody}`)).toHaveTextContent("think one");
   });
@@ -402,7 +422,11 @@ describe("turn folding", () => {
     expect(fold).toHaveClass(styles.turnFold!);
     fold.open = true;
     fireEvent(fold, new Event("toggle"));
-    expect(await screen.findByText("Check the source")).toBeInTheDocument();
+    const thought = (await screen.findByText("Thoughts")).closest("details")!;
+    expect(screen.queryByText("Check the source")).toBeNull();
+    thought.open = true;
+    fireEvent(thought, new Event("toggle"));
+    expect(screen.getAllByText("Check the source")).toHaveLength(1);
     expect(screen.getAllByText("Read 1 file")).toHaveLength(1);
     expect(fold.querySelector(`.${styles.processRun}`)).toBeNull();
     expect(fold.querySelector(`.${styles.processBodyInline}`)).not.toBeNull();
@@ -551,19 +575,86 @@ describe("the conversation selection", () => {
 });
 
 describe("scrolling", () => {
-  it("pauses both scrollers while a thought is read, including downward scrolling inside its activity", async () => {
+  it.each([false, true])(
+    "keeps shown work stable across phases and completion (manual collapse: %s)",
+    async (collapsed) => {
+      useProject.setState({ settings: { agents: { thinking: "auto", smoothText: false } } });
+      const asked: AgentEntry = {
+        type: "user",
+        text: "Inspect changes",
+        attachments: [],
+        steered: false,
+        sentMs: 1000,
+        doneMs: null,
+      };
+      const initial: AgentEntry[] = [asked, { type: "thought", text: "Live reasoning to keep" }];
+      const update = (entries: AgentEntry[], status: AgentTask["status"] = "running") => {
+        backend.entries.set("A", entries);
+        act(() =>
+          useAgents.setState({
+            entries: new Map(backend.entries),
+            tasks: new Map(useAgents.getState().tasks).set("A", { ...task("A"), status }),
+          }),
+        );
+      };
+      update(initial);
+      const view = render(<SessionEditor input={input("A")} />);
+      expect(await screen.findByText("Live reasoning to keep")).toBeVisible();
+      update([...initial, tool("Inspect live output", { status: "running", output: "Live output to keep" })]);
+      expect(stream().querySelector<HTMLDetailsElement>(`.${styles.thought}`)!.open).toBe(true);
+      expect(screen.getByText("Live output to keep")).toBeVisible();
+      if (collapsed) {
+        const run = stream().querySelector<HTMLDetailsElement>(`.${styles.processRun}`)!;
+        fireEvent.click(run.querySelector("summary")!);
+        run.open = false;
+        fireEvent(run, new Event("toggle"));
+      }
+      const phase: AgentEntry[] = [
+        ...initial,
+        tool("Inspect live output", { output: "Live output to keep" }),
+        { type: "agent", text: "Progress checkpoint" },
+        tool("Next command", { status: "running", output: "Next output" }),
+      ];
+      update(phase);
+      expect(stream().querySelector<HTMLDetailsElement>(`.${styles.processRun}`)!.open).toBe(!collapsed);
+      if (!collapsed) expect(screen.getByText("Live output to keep")).toBeVisible();
+      update(
+        [
+          { ...asked, doneMs: 5000 },
+          ...phase
+            .slice(1)
+            .map((entry) => (entry.type === "tool" ? { ...entry, status: "completed" as const } : entry)),
+          { type: "agent", text: "Review result" },
+        ],
+        "ready",
+      );
+      expect(stream().querySelector<HTMLDetailsElement>(`.${styles.processRun}`)!.open).toBe(!collapsed);
+      expect(screen.getByText("Next command").closest("details")!.open).toBe(true);
+      if (!collapsed) {
+        expect(stream().querySelector<HTMLDetailsElement>(`.${styles.thought}`)!.open).toBe(true);
+        expect(screen.getByText("Live output to keep")).toBeVisible();
+      }
+      view.unmount();
+      render(<SessionEditor input={input("A")} />);
+      await screen.findByText("Review result");
+      expect(stream().querySelector<HTMLDetailsElement>(`.${styles.turnFold}`)!.open).toBe(false);
+      expect(screen.queryByText("Live output to keep")).toBeNull();
+    },
+  );
+
+  it("pauses following while a thought is read, including scrolling inside a full output", async () => {
     const transcript: AgentEntry[] = [
       { type: "thought", text: "Read this reasoning" },
-      tool("live", { status: "running" }),
+      tool("live", { status: "running", output: "Log contents" }),
     ];
     useAgents.setState({
       entries: new Map([["A", transcript]]),
       tasks: new Map(useAgents.getState().tasks).set("A", { ...task("A"), status: "running" }),
     });
     render(<SessionEditor input={input("A")} />);
-    const summary = await screen.findByText("Read this reasoning");
+    const summary = await screen.findByText("Thoughts");
     const el = stream();
-    const body = el.querySelector<HTMLDivElement>(`.${styles.processBody}`)!;
+    const body = within(el).getByRole("region", { name: "Output" });
     let height = 1000;
     let innerHeight = 300;
     Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => height });
@@ -601,7 +692,7 @@ describe("scrolling", () => {
     const thought: AgentEntry = { type: "thought", text: "Reasoning being read" };
     useAgents.setState({ entries: new Map([["A", [thought]]]) });
     render(<SessionEditor input={input("A")} />);
-    const summary = await screen.findByText("Reasoning being read");
+    const summary = await screen.findByText("Thoughts");
     fireEvent.click(summary);
     const details = summary.closest("details")!;
     details.open = true;

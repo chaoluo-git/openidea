@@ -7620,5 +7620,8 @@
   "Recent activity": "最近活动",
   "Show earlier activity": "显示较早的活动",
   "Changed excerpt": "修改片段",
-  "Copy Output": "复制输出"
+  "Copy Output": "复制输出",
+  "Show full output": "显示完整输出",
+  "Collapse output": "收起输出",
+  "Thoughts": "思考"
 }

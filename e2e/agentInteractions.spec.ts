@@ -88,6 +88,55 @@ test("fills the conversation width with the composer while keeping prose readabl
   }
 });
 
+for (const theme of ["light", "dark"] as const) {
+  test(`keeps sent messages soft and their controls available on hover or focus in ${theme}`, async ({ page }) => {
+    const text = "查看当前 k8s，用 table 的形式展示出来";
+    const stream = await openChat(page, [
+      { ...user, text },
+      { type: "agent", text: "I will inspect the current context." },
+      { ...user, text: "Keep the complete message readable.\n" + "long-path-segment/".repeat(40) },
+      { type: "agent", text: "The message can still be edited directly." },
+    ]);
+    await page.evaluate(async (theme) => {
+      const path = "/src/platform/project.ts";
+      (await import(path)).useProject.setState({ settings: { theme } });
+    }, theme);
+    await stream.evaluate((el) => {
+      el.scrollTop = 0;
+    });
+    await page.mouse.move(10, 10);
+    const message = stream.getByRole("button", { name: text, exact: true }).locator("..");
+    const footer = message.locator("..").locator(":scope > [class*='_messageFooter_']");
+    if (process.env.OPENIDEA_BUBBLE_SCREENSHOTS) {
+      await page.screenshot({
+        path: `${process.env.OPENIDEA_BUBBLE_SCREENSHOTS}/bubble-${theme}.png`,
+        animations: "disabled",
+      });
+    }
+    expect(await message.evaluate((el) => parseFloat(getComputedStyle(el).borderRadius))).toBeGreaterThanOrEqual(20);
+    await expect(footer).toHaveCSS("opacity", "0");
+    const before = (await message.boundingBox())!;
+    await message.hover();
+    await expect(footer).toHaveCSS("opacity", "1");
+    expect(await message.boundingBox()).toEqual(before);
+    await page.mouse.move(10, 10);
+    await expect(footer).toHaveCSS("opacity", "0");
+    const sent = message.getByRole("button", { name: text, exact: true });
+    await sent.focus();
+    await expect(footer).toHaveCSS("opacity", "1");
+    await sent.press("Enter");
+    await expect(page.getByRole("textbox", { name: "Message", exact: true }).first()).toHaveValue(text);
+    await page.keyboard.press("Escape");
+    await expect(sent).toBeVisible();
+    const streamBox = (await stream.boundingBox())!;
+    for (const bubble of await stream.locator("[class*='_user_']").all()) {
+      const box = (await bubble.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(streamBox.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(streamBox.x + streamBox.width);
+    }
+  });
+}
+
 test("clicks sent text to edit, preserves selection, and applies Enter, Shift+Enter and Escape", async ({ page }) => {
   await openChat(page, [
     { ...user, text: "Previous request" },
@@ -206,6 +255,7 @@ test("uses readable reasoning text and a centered floating jump button", async (
   await expect(stream.locator("[class*='_processRun_'] > summary")).toHaveCount(0);
   await expect(stream.getByText("Read 1 file", { exact: true })).toHaveCount(1);
   const thought = stream.locator("[class*='_thought_'] > summary");
+  await expect(thought).toHaveText("Thoughts");
   await expect(thought).toHaveCSS("font-size", "15px");
   await thought.click();
   await expect(stream.getByText("Checking the source and its tests.", { exact: false }).last()).toHaveCSS(
